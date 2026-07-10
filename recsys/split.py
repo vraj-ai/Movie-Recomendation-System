@@ -50,7 +50,13 @@ def holdout_split(
         train_parts.append(shuffled.iloc[n_test:])
 
     train_df = pd.concat(train_parts, ignore_index=True)
-    test_df = pd.concat(test_parts, ignore_index=True)
+    # If every user has <2 ratings, they all stay in train and no ratings are
+    # held out. Return an empty test frame (same columns/dtypes) instead of
+    # letting pd.concat([]) raise a cryptic "No objects to concatenate".
+    if test_parts:
+        test_df = pd.concat(test_parts, ignore_index=True)
+    else:
+        test_df = ratings.iloc[0:0].copy()
     return train_df, test_df
 
 

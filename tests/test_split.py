@@ -73,6 +73,22 @@ class TestHoldoutSplit:
         with pytest.raises(ValueError):
             holdout_split(df, test_fraction=1.0)
 
+    def test_all_single_rating_users_empty_test(self):
+        """Red-team: a non-empty dataset where every user has <2 ratings must not
+        crash with the cryptic 'No objects to concatenate' from pd.concat([]).
+
+        Per the contract, users with <2 ratings keep all ratings in train, so the
+        correct result is train=all, test=empty (with the same columns)."""
+        df = pd.DataFrame([
+            {"userId": 1, "movieId": 1, "rating": 5.0, "timestamp": 1},
+            {"userId": 2, "movieId": 2, "rating": 4.0, "timestamp": 1},
+            {"userId": 3, "movieId": 3, "rating": 3.0, "timestamp": 1},
+        ])
+        train, test = holdout_split(df, test_fraction=0.2)
+        assert len(train) == 3
+        assert len(test) == 0
+        assert list(test.columns) == list(df.columns)
+
     def test_empty_ratings_raises_clear_error(self):
         """Red-team: empty ratings must raise a clear ValueError, not a
         confusing 'No objects to concatenate' from pd.concat([])."""

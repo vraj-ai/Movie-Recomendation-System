@@ -229,9 +229,13 @@ class TMDBClient:
                 time.sleep(wait)
             except requests.exceptions.RequestException as exc:
                 wait = self._backoff_factor ** attempt
+                # SEC-1: log the exception *class* only. ``requests`` embeds the
+                # full request URL (including the ``api_key`` query param) in the
+                # exception message, so ``str(exc)`` must never reach the log.
                 logger.warning(
-                    "TMDB request error for tmdbId=%s: %s; retry in %.1fs (FAIL-2)",
-                    tmdb_id, exc, wait,
+                    "TMDB request error for tmdbId=%s: %s; retry in %.1fs (FAIL-2, attempt %d/%d)",
+                    tmdb_id, type(exc).__name__, wait,
+                    attempt + 1, self._max_retries,
                 )
                 time.sleep(wait)
 

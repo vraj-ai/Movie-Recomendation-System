@@ -30,3 +30,60 @@ Frontier after #7 lands: **#2, #4, #6 can be worked in parallel**; then #3 (afte
 > Note: `Blocked by` edges are recorded as text references in each issue body.
 > GitHub's native issue-dependency links can be added in the UI if desired; the
 > text edges above are the authoritative dependency order.
+
+## Red-team follow-up tickets (part3)
+
+Filed by the part3 maker pass. `gh` is flaky on this project; if a ticket below
+has no linked GitHub issue it still needs creating with label `ready-for-agent`.
+Each ticket names the violated invariant and a runnable Verification-command that
+exits 0 exactly when fixed.
+
+| ID | Issue | Title | Invariant | Verification-command | Status |
+|----|-------|-------|-----------|----------------------|--------|
+| P3-1 | [#9](https://github.com/VrajGupta/Movie-Recomendation-System/issues/9) | Pinned gate `.venv/bin/pytest -q` cannot import `recsys` (no path/config); suite only collects via `python -m pytest` | Test harness / gate integrity | `.venv/bin/pytest -q` | FIXED |
+| P3-2 | [#10](https://github.com/VrajGupta/Movie-Recomendation-System/issues/10) | SEC-1 leak: FAIL-2 `RequestException` branch in `tmdb._fetch_with_retry` logs the raw exception, which embeds `?api_key=<KEY>` from the request URL | SEC-1 (key never logged) | `.venv/bin/pytest tests/test_tmdb_client.py -q` | FIXED |
+| P3-3 | [#11](https://github.com/VrajGupta/Movie-Recomendation-System/issues/11) | `split.holdout_split` crashes with cryptic `ValueError: No objects to concatenate` when every user has <2 ratings (non-empty df, empty test_parts) | Splitter contract (users <2 ratings → all train) | `.venv/bin/pytest tests/test_split.py -q` | FIXED |
+
+### P3-1 — gate cannot import `recsys`
+`.venv/bin/pytest -q` fails collection with `ModuleNotFoundError: No module
+named 'recsys'`. Root cause: repo root is not on `sys.path` under the `pytest`
+console script (no `pyproject.toml`/`pytest.ini` `pythonpath`, no root conftest,
+no editable install). `.venv/bin/python -m pytest -q` passes 145 because `-m`
+adds cwd. Fix (in-scope, `tests/**`): prepend the repo root to `sys.path` at the
+top of `tests/conftest.py` so the pinned gate and per-area gates all collect.
+- Verification: `.venv/bin/pytest -q` exits 0.
+
+### P3-2 — SEC-1 API key leaked into logs on network exceptions
+`_fetch_with_retry`'s `except requests.exceptions.RequestException as exc:`
+branch logs `exc`. Confirmed empirically that `requests` puts the full URL —
+including the `api_key` query parameter — into the exception string, so the key
+is written to WARNING logs. The pre-existing `test_api_key_not_logged` only
+covers the HTTP-500 path, which never logs the exception. Fix: log the exception
+*class name* only (`type(exc).__name__`), never the raw message. New test
+reproduces the real `requests`-style exception string and asserts the key is
+absent from all log records.
+- Verification: `.venv/bin/pytest tests/test_tmdb_client.py -q` exits 0.
+
+### P3-3 — splitter crashes on all-singleton-user datasets
+`holdout_split` guards the fully-empty DataFrame (part2) but not the case where
+the df is non-empty yet every user has <2 ratings: all groups go to `train_parts`
+and `test_parts` stays empty, so `pd.concat(test_parts)` raises the cryptic
+`ValueError: No objects to concatenate`. Per the docstring contract these users
+"keep all ratings in train", so the correct result is train=all, test=empty. Fix:
+return an empty test DataFrame (same columns/dtypes) when `test_parts` is empty.
+- Verification: `.venv/bin/pytest tests/test_split.py -q` exits 0.
+
+## Follow-ups deliberately NOT fixed in this pass (documented, low-value / risky)
+
+- **FAIL-3 unbounded `Retry-After`**: a hostile/broken server can return a huge
+  `Retry-After` and the client will `time.sleep` for it. Cap to a sane maximum.
+  (Known part2 open edge case.)
+- **FAIL-7 cache value-type validation**: `_load_cache` checks keys exist but not
+  that values have the right types (e.g. `genres` as a string). Wrong-typed but
+  structurally-present entries are served silently. (Known part2 open edge case.)
+- **Zero-relevant-item users in metric averages**: `evaluate_recommender` averages
+  Precision/Recall/NDCG over *all* test users, including users with no held-out
+  relevant items. This uniformly deflates every model, so the relative ranking
+  (the deliverable) is not distorted; low value. (Known part2 open edge case.)
+- **Duplicate `(userId, movieId)` rows summed in CSR** on load. (Known part2 edge.)
+- **No linter configured**: consider adding `ruff`/`flake8` in CI. (Known gap.)

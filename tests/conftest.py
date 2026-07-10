@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+
+# Ensure the repo root is importable so ``import recsys`` works under the bare
+# ``pytest`` console script (the pinned gate), not only ``python -m pytest``.
+# The console script does not add the invocation directory to ``sys.path``; the
+# project ships no packaging/pythonpath config, so we add it here (P3-1).
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import pandas as pd
 import pytest

@@ -445,6 +445,46 @@ class TestSecurity:
         for record in caplog.records:
             assert "SECRET_KEY_123" not in record.getMessage()
 
+    def test_api_key_not_logged_on_request_exception(self, tmp_path, caplog):
+        """SEC-1: a network RequestException must not leak the API key into logs.
+
+        ``requests`` embeds the full request URL — including the ``api_key`` query
+        parameter — in its exception string. Logging the raw exception on the
+        FAIL-2 retry path therefore writes the key to the log. This reproduces the
+        exact exception string ``requests`` produces and asserts the key never
+        appears in any log record.
+        """
+        tmdb_id = 404
+        cache_dir = tmp_path / "cache"
+        cache_dir.mkdir()
+        client = TMDBClient(
+            api_key="SECRET_KEY_123", cache_dir=cache_dir,
+            max_retries=2, backoff_factor=0.01, rate_limit_delay=0,
+        )
+        session = FakeSession()
+
+        def raising_get(url, params=None, timeout=None):
+            session.calls.append({"url": url, "params": params})
+            # Mirror the real requests exception string, which carries the
+            # querystring (and thus the api_key).
+            raise requests.exceptions.ConnectionError(
+                "HTTPSConnectionPool(host='api.themoviedb.org', port=443): "
+                "Max retries exceeded with url: "
+                f"/3/movie/{tmdb_id}?api_key=SECRET_KEY_123"
+                "&append_to_response=keywords,credits "
+                "(Caused by NewConnectionError('...'))"
+            )
+
+        session.get = raising_get
+        client._session = session
+
+        with caplog.at_level(logging.DEBUG, logger="recsys.tmdb"):
+            result = client.get_movie(tmdb_id)
+
+        assert result is None  # skipped after retries (FAIL-2)
+        for record in caplog.records:
+            assert "SECRET_KEY_123" not in record.getMessage()
+
     def test_api_key_sent_as_param(self, tmp_path):
         """API key is sent as query param (not in URL path)."""
         tmdb_id = 403
