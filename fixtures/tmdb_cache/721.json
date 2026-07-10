@@ -1,0 +1,7 @@
+{
+  "genres": ["Action", "Adventure", "Thriller"],
+  "keywords": ["james bond", "spy", "satellite", "russia", "action"],
+  "cast": ["Pierce Brosnan", "Sean Bean", "Izabella Scorupco"],
+  "crew": ["Martin Campbell"],
+  "overview": "James Bond races to stop a criminal syndicate from using a satellite weapon to steal millions from London."
+}
