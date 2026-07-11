@@ -137,6 +137,9 @@ A Python **algorithm experiment** that:
 
 - Any production/serving concern: web UI, hosted API, authentication, databases,
   real-time updates, deployment, monitoring.
+  *(Amended — effort 2: a **local** web UI over a deterministic taste engine is
+  now specified in `docs/SPEC-TASTE-WEBUI.md`. Hosted/production serving remains
+  out of scope.)*
 - Real user accounts or non-anonymized data.
 - Larger MovieLens variants (`1M`, `25M`) and scalability tuning.
 - Item-KNN / user-KNN CF, deep-learning recommenders, and online/bandit methods

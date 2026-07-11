@@ -87,3 +87,43 @@ return an empty test DataFrame (same columns/dtypes) when `test_parts` is empty.
   (the deliverable) is not distorted; low value. (Known part2 open edge case.)
 - **Duplicate `(userId, movieId)` rows summed in CSR** on load. (Known part2 edge.)
 - **No linter configured**: consider adding `ruff`/`flake8` in CI. (Known gap.)
+
+---
+
+# Tickets — Effort 2: Taste Engine + Web UI
+
+Local mirror of the GitHub issue tracker (`VrajGupta/Movie-Recomendation-System`).
+The **GitHub issues are the source of truth**; this file is a readable snapshot.
+Spec anchor: [issue #13](https://github.com/VrajGupta/Movie-Recomendation-System/issues/13)
+· `docs/SPEC-TASTE-WEBUI.md` · branch `plan/taste-engine-webui`.
+Invariants: `docs/INVARIANTS.md` effort-2 section (MATH-1..4, WEB-PERF-1..3,
+WEB-FAIL-1..6, WEB-SEC-1..3). "Blocked by" tracks GitHub issue numbers.
+
+- [ ] W1 — Taste engine core (deterministic profile + scoring + breakdown)
+      — [#14](https://github.com/VrajGupta/Movie-Recomendation-System/issues/14)
+      · frontier · MATH-1..4, WEB-FAIL-5
+      · Verify: `.venv/bin/pytest tests/test_taste_engine.py -q`
+- [ ] W2 — Profile store (ratings + pins JSON, quarantine, gitignore)
+      — [#15](https://github.com/VrajGupta/Movie-Recomendation-System/issues/15)
+      · frontier · WEB-FAIL-3, WEB-FAIL-5, WEB-SEC-3
+      · Verify: `.venv/bin/pytest tests/test_profile_store.py -q`
+- [ ] W3 — Server skeleton (explicit data mode, status badge API, static shell, search)
+      — [#16](https://github.com/VrajGupta/Movie-Recomendation-System/issues/16)
+      · frontier · WEB-FAIL-1..2, WEB-SEC-1..2, WEB-PERF-1
+      · Verify: `.venv/bin/pytest tests/test_web_app.py -q`
+- [ ] W4 — Recommend + Similar APIs (breakdowns wired to engine)
+      — [#17](https://github.com/VrajGupta/Movie-Recomendation-System/issues/17)
+      · blocked by #14, #15, #16 · MATH-1..4, WEB-FAIL-2/5, WEB-PERF-2
+      · Verify: `.venv/bin/pytest tests/test_web_recommend.py -q`
+- [ ] W5 — Ratings + profile APIs (mutations recompute, pin semantics)
+      — [#18](https://github.com/VrajGupta/Movie-Recomendation-System/issues/18)
+      · blocked by #14, #15, #16 · MATH-4, WEB-FAIL-2/3, WEB-PERF-3
+      · Verify: `.venv/bin/pytest tests/test_web_profile.py -q`
+- [ ] W6 — Web UI: Recommend / Similar / Profile tabs (static page)
+      — [#19](https://github.com/VrajGupta/Movie-Recomendation-System/issues/19)
+      · blocked by #17, #18 · WEB-FAIL-1/4, WEB-SEC-2
+      · Verify: `.venv/bin/pytest tests/test_web_page.py -q`
+- [ ] W7 — Benchmark tab + docs + release polish
+      — [#20](https://github.com/VrajGupta/Movie-Recomendation-System/issues/20)
+      · blocked by #17, #18, #19 · WEB-FAIL-6, MATH-3, WEB-PERF-1
+      · Verify: `.venv/bin/pytest -q && .venv/bin/ruff check .`

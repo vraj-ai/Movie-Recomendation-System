@@ -57,3 +57,68 @@ the MovieLens download and the local cache.
 - **SEC-3 (blast radius)** — only public, anonymized MovieLens data and public
   TMDB metadata are handled; no PII. If the key leaks, the exposure is a
   free-tier, read-only TMDB key — revoke/rotate; no user data is at risk.
+
+---
+
+# Effort 2 — Taste engine + web UI
+
+Baseline assumptions: same dataset as above; the taste engine is closed-form
+arithmetic (no training); the server is FastAPI + uvicorn on localhost.
+Spec: `docs/SPEC-TASTE-WEBUI.md` · Glossary: `CONTEXT.md` (effort-2 section).
+
+## Determinism / explainability (the point of the effort)
+
+- **MATH-1 (determinism)** — identical inputs (taste ratings, pins, dataset)
+  produce identical scores and identical ranking order on every call. No RNG, no
+  fitted state, no wall-clock dependence anywhere in the serving path.
+- **MATH-2 (auditable score)** — every recommendation and similarity response
+  carries a complete score breakdown; the listed terms recombine to the total
+  within 1e-9 relative tolerance, and the UI displays every term. No component
+  of a score may exist that is absent from the breakdown.
+- **MATH-3 (no ML in the serving path)** — the web server never imports, fits,
+  or serves the sklearn recommenders. Scoring and similarity are closed-form
+  (set overlap, proximity, weighted sums) with constants documented in config.
+  The ML four remain CLI-only legacy.
+- **MATH-4 (pin semantics)** — effective weight = pinned value if pinned, else
+  ratings-derived value. Never a blend; per-dimension reset restores derived.
+
+## Performance budgets
+
+- **WEB-PERF-1 (startup)** — server ready (data loaded, profile computed) in
+  **< 5 s** fixture mode; **< 30 s** real mode on a warm TMDB cache.
+- **WEB-PERF-2 (request latency)** — every API endpoint responds in **< 1 s**
+  after startup (parity with PERF-5).
+- **WEB-PERF-3 (recompute)** — a rating or pin change yields an updated profile
+  and re-ranked recommendations in **< 500 ms**.
+
+## Failure modes
+
+- **WEB-FAIL-1 (explicit data mode)** — the mode is chosen at startup (fixture
+  flag or real data). Missing prerequisites (no dataset, no cache) **fail fast**
+  with an actionable message. The server **never silently swaps datasets**.
+- **WEB-FAIL-2 (input validation)** — unknown `movieId`, out-of-range rating,
+  bad `n`, or malformed JSON returns a **4xx** with a clear error body; user
+  input can never produce a 500.
+- **WEB-FAIL-3 (profile integrity)** — a corrupt/unreadable profile file is
+  quarantined to `<name>.corrupt-<timestamp>`, the server starts with an empty
+  profile, and the UI shows a visible warning. Never crashes; never silently
+  overwrites the operator's data.
+- **WEB-FAIL-4 (posters degrade)** — missing TMDB art yields a text-only card:
+  no broken images, and the browser never calls the TMDB API (public image CDN
+  URLs only).
+- **WEB-FAIL-5 (cold profile)** — zero taste ratings → neutral derived weights;
+  the engine still serves (pins/sliders can drive everything) and the UI labels
+  the profile as neutral.
+- **WEB-FAIL-6 (benchmark absent)** — missing or malformed
+  `results/comparison.csv` renders a friendly empty state naming the CLI command
+  that produces it; never an error page.
+
+## Security / permission boundaries
+
+- **WEB-SEC-1 (bind)** — the server binds **127.0.0.1** by default; any wider
+  bind requires an explicit flag.
+- **WEB-SEC-2 (key stays server-side)** — the TMDB key never appears in HTML,
+  JS, or any API response. Poster URLs sent to the browser are public CDN paths
+  that require no key (SEC-1 still governs the key itself).
+- **WEB-SEC-3 (profile privacy)** — the profile/ratings file is gitignored; it
+  contains only movie ratings, pins, and derived numbers — no PII.
