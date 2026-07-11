@@ -30,6 +30,8 @@ from recsys.enrichment import enrich
 from recsys.taste import (
     TasteRating,
     build_features,
+    derive_profile,
+    effective_profile,
     recommend as taste_recommend,
     similar_movies,
 )
@@ -91,6 +93,25 @@ class SimilarResponse(BaseModel):
     movie_id: int
     title: str
     results: list[SimilarItem]
+
+
+# ---------------------------------------------------------------- W5 models
+
+
+class RatingBody(BaseModel):
+    movie_id: int
+    rating: float
+
+
+class PinBody(BaseModel):
+    slider: str
+    value: float | None = None  # None = unpin (reset to derived, MATH-4)
+
+
+# Pin value ranges per slider kind (WEB-FAIL-2: reject junk, never 500).
+GENRE_PIN_RANGE = (-1.0, 1.0)
+POP_PIN_RANGE = (0.0, 1.0)
+ERA_PIN_RANGE = (1880.0, 2030.0)
 
 
 def create_app(
@@ -208,5 +229,92 @@ def create_app(
                 for s in similar_movies(movie_id, features, n)
             ],
         )
+
+    # ------------------------------------------------------------ W5 (#18)
+
+    def _profile_payload() -> dict:
+        """Recompute the profile from the store — the single source of truth.
+
+        Called after every mutation so responses are never stale (WEB-PERF-3).
+        """
+        profile = store.load()
+        taste = [
+            TasteRating(mid, r) for mid, r in sorted(profile.ratings.items())
+        ]
+        eff = effective_profile(derive_profile(taste, features), profile.pins)
+        return {
+            "n_ratings": len(taste),
+            "cold_start": len(taste) == 0,
+            "era_tol": eff.era_tol,
+            "sliders": {
+                sid: {"value": s.value, "derived": s.derived, "pinned": s.pinned}
+                for sid, s in eff.sliders.items()
+            },
+        }
+
+    @app.get("/api/profile")
+    def get_profile() -> dict:
+        return _profile_payload()
+
+    @app.get("/api/ratings")
+    def get_ratings() -> dict:
+        profile = store.load()
+        return {
+            "ratings": [
+                {
+                    "movie_id": mid,
+                    "title": features[mid].title if mid in features else f"#{mid}",
+                    "rating": r,
+                }
+                for mid, r in sorted(profile.ratings.items())
+            ]
+        }
+
+    @app.put("/api/ratings")
+    def put_rating(body: RatingBody) -> dict:
+        r = body.rating
+        if not (0.5 <= r <= 5.0) or (r * 2) != int(r * 2):
+            raise HTTPException(
+                400, "rating must be 0.5-5.0 in half steps"  # WEB-FAIL-2
+            )
+        if body.movie_id not in features:
+            raise HTTPException(404, f"unknown movie_id {body.movie_id}")
+        profile = store.load()
+        profile.ratings[body.movie_id] = r
+        store.save(profile.ratings, profile.pins)
+        return {"ok": True, "profile": _profile_payload()}
+
+    @app.delete("/api/ratings")
+    def delete_rating(movie_id: int = Query(...)) -> dict:
+        profile = store.load()
+        if movie_id not in profile.ratings:
+            raise HTTPException(404, f"movie_id {movie_id} is not rated")
+        del profile.ratings[movie_id]
+        store.save(profile.ratings, profile.pins)
+        return {"ok": True, "profile": _profile_payload()}
+
+    @app.put("/api/profile/pins")
+    def put_pin(body: PinBody) -> dict:
+        sid = body.slider
+        if sid == "era":
+            lo, hi = ERA_PIN_RANGE
+        elif sid == "pop":
+            lo, hi = POP_PIN_RANGE
+        elif sid.startswith("genre:") and len(sid) > len("genre:"):
+            lo, hi = GENRE_PIN_RANGE
+        else:
+            raise HTTPException(400, f"unknown slider {sid!r}")  # WEB-FAIL-2
+        profile = store.load()
+        if body.value is None:
+            # Unpin = recompute without the pin; no blended state (MATH-4).
+            profile.pins.pop(sid, None)
+        else:
+            if not (lo <= body.value <= hi):
+                raise HTTPException(
+                    400, f"{sid} pin must be within [{lo}, {hi}]"
+                )
+            profile.pins[sid] = body.value
+        store.save(profile.ratings, profile.pins)
+        return {"ok": True, "profile": _profile_payload()}
 
     return app
