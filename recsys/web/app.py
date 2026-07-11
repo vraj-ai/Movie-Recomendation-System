@@ -13,10 +13,12 @@ Rules enforced here:
 from __future__ import annotations
 
 import re
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from recsys.config import (
     FIXTURE_TMDB_CACHE,
@@ -24,13 +26,71 @@ from recsys.config import (
     TMDB_CACHE_SUBDIR,
 )
 from recsys.data import load_ratings
+from recsys.enrichment import enrich
+from recsys.taste import (
+    TasteRating,
+    build_features,
+    recommend as taste_recommend,
+    similar_movies,
+)
+from recsys.tmdb import TMDBClient
 from recsys.web.profile_store import ProfileStore
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 SEARCH_MAX_QUERY = 200
 SEARCH_MAX_RESULTS = 20
+RECOMMEND_MAX_N = 100
 
 _MODES = ("fixture", "real")
+
+
+# ---------------------------------------------------------------- W4 models
+# Pydantic response models carry EVERY breakdown term (MATH-2): nothing is
+# summarized away, so the UI can always show the receipts.
+
+
+class NeighborTermModel(BaseModel):
+    movie_id: int
+    title: str
+    rating: float
+    signal: float
+    similarity: float
+    contribution: float
+
+
+class RecommendItem(BaseModel):
+    movie_id: int
+    title: str
+    genre_affinity: float
+    era_match: float
+    pop_match: float
+    feature_match: float
+    neighbor_evidence: float
+    neighbor_terms: list[NeighborTermModel]
+    feature_term: float
+    neighbor_term: float
+    score: float
+    cold_start: bool
+
+
+class RecommendResponse(BaseModel):
+    cold_start: bool  # WEB-FAIL-5: cold start is labeled, never silent
+    results: list[RecommendItem]
+
+
+class SimilarItem(BaseModel):
+    movie_id: int
+    title: str
+    genre_jaccard: float
+    era_proximity: float
+    pop_proximity: float
+    similarity: float
+
+
+class SimilarResponse(BaseModel):
+    movie_id: int
+    title: str
+    results: list[SimilarItem]
 
 
 def create_app(
@@ -55,6 +115,17 @@ def create_app(
     # Precompute the search table once (title lowercased for matching).
     movies = data.movies[["movieId", "title", "genres"]].copy()
     movies["_lower"] = movies["title"].str.lower()
+
+    # W4: static per-movie features, built once at startup. Cache-only TMDB
+    # client (api_key=None): no network in the serving path, key not needed.
+    rating_counts = {
+        int(k): int(v)
+        for k, v in data.ratings["movieId"].value_counts().items()
+    }
+    content = enrich(
+        data.movie_ids, data.tmdb_map, TMDBClient(api_key=None, cache_dir=cache_dir)
+    )
+    features = build_features(data.movies, rating_counts, content)
 
     app = FastAPI(title="Taste Engine", docs_url=None, redoc_url=None)
     # Key stays in the closure; it is deliberately NOT stored on app.state
@@ -105,5 +176,37 @@ def create_app(
             for row in hits.head(SEARCH_MAX_RESULTS).itertuples()
         ]
         return {"results": results}
+
+    # ------------------------------------------------------------ W4 (#17)
+
+    @app.get("/api/recommend", response_model=RecommendResponse)
+    def api_recommend(
+        n: int = Query(10, ge=1, le=RECOMMEND_MAX_N),
+    ) -> RecommendResponse:
+        profile = store.load()  # fresh read: mutations are never stale
+        taste = [
+            TasteRating(mid, r) for mid, r in sorted(profile.ratings.items())
+        ]
+        picks = taste_recommend(features, taste, profile.pins, n)
+        return RecommendResponse(
+            cold_start=len(taste) == 0,  # WEB-FAIL-5: labeled, never silent
+            results=[RecommendItem(**asdict(b)) for b in picks],
+        )
+
+    @app.get("/api/similar", response_model=SimilarResponse)
+    def api_similar(
+        movie_id: int = Query(...),
+        n: int = Query(10, ge=1, le=RECOMMEND_MAX_N),
+    ) -> SimilarResponse:
+        if movie_id not in features:
+            raise HTTPException(404, f"unknown movie_id {movie_id}")
+        return SimilarResponse(
+            movie_id=movie_id,
+            title=features[movie_id].title,
+            results=[
+                SimilarItem(**asdict(s))
+                for s in similar_movies(movie_id, features, n)
+            ],
+        )
 
     return app
