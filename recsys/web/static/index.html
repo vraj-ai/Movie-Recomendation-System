@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Taste Engine</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+    header { display: flex; align-items: baseline; gap: 1rem; }
+    #badge { font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
+             border: 1px solid currentColor; }
+    #badge.fixture { color: #b45309; }
+    #badge.real { color: #15803d; }
+    #search { width: 100%; padding: .6rem; font-size: 1rem; margin: 1rem 0; }
+    ul#results { list-style: none; padding: 0; }
+    ul#results li { padding: .4rem 0; border-bottom: 1px solid #8883; }
+    .genres { opacity: .7; font-size: .85rem; margin-left: .5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Taste Engine</h1>
+    <span id="badge">loading…</span>
+  </header>
+  <p id="stats"></p>
+  <input id="search" type="search" placeholder="Search movies by title…"
+         autocomplete="off">
+  <ul id="results"></ul>
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    async function loadStatus() {
+      const r = await fetch("/api/status");
+      const s = await r.json();
+      const badge = $("badge");
+      badge.textContent = s.mode === "fixture"
+        ? "FIXTURE DATA — tiny bundled sample" : "real dataset";
+      badge.className = s.mode;
+      $("stats").textContent =
+        `${s.dataset.movies} movies · ${s.dataset.ratings} ratings · ` +
+        `${s.tmdb.cached_movies} TMDB-cached · ` +
+        `profile: ${s.profile.ratings} ratings, ${s.profile.pins} pins`;
+    }
+
+    let timer = null;
+    $("search").addEventListener("input", (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => runSearch(e.target.value), 150);
+    });
+
+    async function runSearch(q) {
+      const ul = $("results");
+      if (!q.trim()) { ul.replaceChildren(); return; }
+      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      if (!r.ok) return;
+      const { results } = await r.json();
+      ul.replaceChildren(...results.map((m) => {
+        const li = document.createElement("li");
+        const strong = document.createElement("strong");
+        strong.textContent = m.title;               // textContent only — no
+        const span = document.createElement("span"); // innerHTML injection
+        span.className = "genres";
+        span.textContent = m.genres.join(" · ");
+        li.append(strong, span);
+        li.dataset.movieId = m.movieId;
+        return li;
+      }));
+    }
+
+    loadStatus();
+  </script>
+</body>
+</html>
