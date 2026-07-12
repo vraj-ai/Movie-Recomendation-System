@@ -127,3 +127,66 @@ WEB-FAIL-1..6, WEB-SEC-1..3). "Blocked by" tracks GitHub issue numbers.
       — [#20](https://github.com/VrajGupta/Movie-Recomendation-System/issues/20)
       · blocked by #17, #18, #19 · WEB-FAIL-6, MATH-3, WEB-PERF-1
       · Verify: `.venv/bin/pytest -q && .venv/bin/ruff check .`
+
+## Red-team follow-up tickets (part3 — effort-2 web UI pass)
+
+Filed by the part3 maker pass over W1–W7. `gh` remains flaky on this project; if
+a ticket below has no linked GitHub issue it still needs creating with label
+`ready-for-agent`. Each ticket names the violated invariant and a runnable
+Verification-command that exits 0 exactly when fixed.
+
+| ID | Issue | Title | Invariant | Verification-command | Status |
+|----|-------|-------|-----------|----------------------|--------|
+| P3-4 | _pending (`gh` flaky)_ | `GET /api/benchmark` 500s on non-UTF-8 or oversized-field `comparison.csv`: only `OSError` is caught, so `UnicodeDecodeError` / `csv.Error` escape | WEB-FAIL-6 (malformed results → friendly empty state, never an error page) | `.venv/bin/pytest tests/test_web_benchmark.py -q` | FIXED |
+| P3-5 | _pending (`gh` flaky)_ | Quarantine warning never reaches the operator: the `quarantined` status flag is non-sticky (any non-status request consumes it) and `index.html` never renders it | WEB-FAIL-3 ("the UI shows a visible warning") | `.venv/bin/pytest tests/test_web_profile.py -q` | FIXED |
+| P3-6 | _pending (`gh` flaky)_ | `python -m recsys.web` ignores `config.WEB_HOST`/`WEB_PORT`: hardcodes port 8765 while config documents 8977, leaving the documented constants dead | Config-as-documented (`config.py` "Web server" block; WEB-SEC-1 comment anchors to these constants) | `.venv/bin/pytest tests/test_web_app.py -q` | FIXED |
+
+### P3-4 — WEB-FAIL-6: malformed comparison.csv can still 500
+`get_benchmark` wraps the read in `except OSError:` only. Confirmed empirically
+on Python 3.13: a `comparison.csv` with invalid UTF-8 bytes raises
+`UnicodeDecodeError` → HTTP 500; a field larger than `csv.field_size_limit()`
+(131072) raises `csv.Error` → HTTP 500. WEB-FAIL-6 promises a truthful empty
+state for *malformed* results, never an error page. Fix: catch
+`(OSError, UnicodeDecodeError, csv.Error)`.
+- Verification: `.venv/bin/pytest tests/test_web_benchmark.py -q` exits 0.
+
+### P3-5 — WEB-FAIL-3: quarantine is invisible to the operator
+Two halves, confirmed empirically: (a) `store.load()` quarantines on first read
+and the flag lives only on that one `StoredProfile` — if the first post-corruption
+request is anything but `/api/status` (e.g. `/api/profile`), the subsequent
+status call reports `quarantined: False`; (b) even when the flag is true,
+`index.html`'s `loadStatus()` renders no warning — the string `quarantined` does
+not appear in the page. Fix: make the flag sticky for the server's lifetime
+(any load that quarantines latches app-level state reported by `/api/status`)
+and wire a visible banner in the UI.
+- Verification: `.venv/bin/pytest tests/test_web_profile.py -q` exits 0.
+
+### P3-6 — dead config: WEB_HOST/WEB_PORT never used
+`recsys/web/__main__.py` hardcodes `default="127.0.0.1"` and `default=8765`;
+`config.py` declares `WEB_HOST = "127.0.0.1"` (annotated as the WEB-SEC-1
+anchor) and `WEB_PORT = 8977`. An operator tuning the documented constants sees
+no effect, and the two defaults have already drifted (8765 ≠ 8977). Fix: the
+parser defaults come from config.
+- Verification: `.venv/bin/pytest tests/test_web_app.py -q` exits 0.
+
+### Follow-ups deliberately NOT fixed in this pass (documented)
+
+- **WEB-PERF-2 at real scale (risk, untested)**: `recommend()` scores every
+  unrated movie per request in pure Python — O(n_movies × n_taste_ratings)
+  similarity calls. Fine on the 10-movie fixture; at ~9.7k movies with a large
+  profile the <1 s budget is at risk. Needs profiling on the real dataset and
+  likely vectorization — refactor territory, left to the checker/next slice.
+- **No timing tests for WEB-PERF-2/WEB-PERF-3**: only WEB-PERF-1 (startup <5 s)
+  has a test; latency assertions are flaky in CI and were deliberately skipped.
+- **Similar-tab weight labels hardcoded in `index.html`** (`×0.6 / ×0.25 /
+  ×0.15`) duplicate `TASTE_SIM_*` config constants — drift risk if the operator
+  tunes config. Clean fix needs a small config endpoint; refactor, not a bug fix.
+- **Cold-start era slider renders `0.00`**: with zero ratings `era`/`pop` slider
+  values are JSON `null`; `sliderRow` shows `0.00 (derived 0.00)` instead of a
+  dash. Cosmetic, JS-only, no browser test harness in the repo.
+- **`put_pin` accepts junk-but-harmless genre ids** (`"genre: "` whitespace,
+  genres absent from the dataset): validated for range only; the pin creates an
+  inert slider. Low value.
+- **`ProfileStore._quarantine` can itself raise `OSError`** (unwritable parent
+  dir, or the corrupt file vanishing between read and rename) and would surface
+  as a 500. Narrow race/permission edge; left open.

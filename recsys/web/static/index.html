@@ -51,6 +51,9 @@
     <span id="stats" class="muted"></span>
   </header>
 
+  <!-- WEB-FAIL-3: visible warning when a corrupt profile was quarantined -->
+  <div id="quarantine" class="banner" hidden></div>
+
   <nav id="tabs">
     <button data-tab="search" class="active">Search &amp; Rate</button>
     <button data-tab="recommend">Recommend</button>
@@ -158,6 +161,15 @@
         `${s.dataset.movies} movies · ${s.dataset.ratings} ratings · ` +
         `${s.tmdb.cached_movies} TMDB-cached · ` +
         `profile: ${s.profile.ratings} ratings, ${s.profile.pins} pins`;
+      // WEB-FAIL-3: a corrupt profile file was moved aside — say so, loudly.
+      const qb = $("quarantine");
+      qb.hidden = !s.profile.quarantined;
+      if (s.profile.quarantined) {
+        qb.textContent = "Warning: your saved profile file was corrupt and " +
+          "has been quarantined to taste_profile.json.corrupt-<timestamp> " +
+          "(bytes preserved, never overwritten). The server restarted from " +
+          "an empty profile.";
+      }
     }
 
     // ---- shared renderers (textContent only — no HTML sinks) -------------

@@ -192,3 +192,23 @@ def test_corrupt_profile_is_quarantined_not_fatal(client, profile_path):
     assert r.json()["n_ratings"] == 0  # quarantined -> empty, not a crash
     quarantined = list(profile_path.parent.glob("*.corrupt-*"))
     assert quarantined  # the corrupt file was preserved, not destroyed
+
+
+def test_quarantine_flag_is_sticky_in_status(client, profile_path):
+    """P3-5 (WEB-FAIL-3): the warning must survive the load that quarantined.
+
+    The quarantining load is usually NOT /api/status (here: /api/profile);
+    a later /api/status must still report it, or the UI can never warn.
+    """
+    _put_rating(client, 1, 4.0)
+    profile_path.write_text("{not json!!")
+    assert client.get("/api/profile").status_code == 200  # triggers quarantine
+    assert client.get("/api/status").json()["profile"]["quarantined"] is True
+    # ...and it stays visible on subsequent polls too.
+    assert client.get("/api/status").json()["profile"]["quarantined"] is True
+
+
+def test_ui_wires_quarantine_warning(client):
+    """P3-5 (WEB-FAIL-3): the page must actually render the status flag."""
+    html = client.get("/").text
+    assert "quarantined" in html  # loadStatus() consumes profile.quarantined

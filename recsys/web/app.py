@@ -143,6 +143,18 @@ def create_app(
     )
     store = ProfileStore(profile_path or PROFILE_PATH)
 
+    # WEB-FAIL-3 (P3-5): a quarantine event must stay visible to the operator.
+    # store.load() reports it only on the single load that moved the file
+    # aside; latch it for the server's lifetime so /api/status (and the UI
+    # banner) keep warning no matter which request triggered the quarantine.
+    _quarantine_seen = {"flag": False}
+
+    def load_profile():
+        profile = store.load()
+        if profile.quarantined_to is not None:
+            _quarantine_seen["flag"] = True
+        return profile
+
     # Precompute the search table once (title lowercased for matching).
     movies = data.movies[["movieId", "title", "genres"]].copy()
     movies["_lower"] = movies["title"].str.lower()
@@ -177,7 +189,7 @@ def create_app(
 
     @app.get("/api/status")
     def status() -> dict:
-        profile = store.load()
+        profile = load_profile()
         return {
             "mode": mode,
             "dataset": {
@@ -193,7 +205,7 @@ def create_app(
             "profile": {
                 "ratings": len(profile.ratings),
                 "pins": len(profile.pins),
-                "quarantined": profile.quarantined_to is not None,
+                "quarantined": _quarantine_seen["flag"],
             },
         }
 
@@ -223,7 +235,7 @@ def create_app(
     def api_recommend(
         n: int = Query(10, ge=1, le=RECOMMEND_MAX_N),
     ) -> RecommendResponse:
-        profile = store.load()  # fresh read: mutations are never stale
+        profile = load_profile()  # fresh read: mutations are never stale
         taste = [
             TasteRating(mid, r) for mid, r in sorted(profile.ratings.items())
         ]
@@ -263,7 +275,7 @@ def create_app(
 
         Called after every mutation so responses are never stale (WEB-PERF-3).
         """
-        profile = store.load()
+        profile = load_profile()
         taste = [
             TasteRating(mid, r) for mid, r in sorted(profile.ratings.items())
         ]
@@ -284,7 +296,7 @@ def create_app(
 
     @app.get("/api/ratings")
     def get_ratings() -> dict:
-        profile = store.load()
+        profile = load_profile()
         return {
             "ratings": [
                 {
@@ -305,14 +317,14 @@ def create_app(
             )
         if body.movie_id not in features:
             raise HTTPException(404, f"unknown movie_id {body.movie_id}")
-        profile = store.load()
+        profile = load_profile()
         profile.ratings[body.movie_id] = r
         store.save(profile.ratings, profile.pins)
         return {"ok": True, "profile": _profile_payload()}
 
     @app.delete("/api/ratings")
     def delete_rating(movie_id: int = Query(...)) -> dict:
-        profile = store.load()
+        profile = load_profile()
         if movie_id not in profile.ratings:
             raise HTTPException(404, f"movie_id {movie_id} is not rated")
         del profile.ratings[movie_id]
@@ -341,7 +353,9 @@ def create_app(
                     row for row in reader
                     if header and len(row) == len(header)
                 ]
-        except OSError:
+        except (OSError, UnicodeDecodeError, csv.Error):
+            # WEB-FAIL-6 (P3-4): missing OR malformed (undecodable bytes,
+            # oversized fields) both answer the truthful empty state.
             header, rows = None, []
         if not header or not rows:
             return {
@@ -368,7 +382,7 @@ def create_app(
             lo, hi = GENRE_PIN_RANGE
         else:
             raise HTTPException(400, f"unknown slider {sid!r}")  # WEB-FAIL-2
-        profile = store.load()
+        profile = load_profile()
         if body.value is None:
             # Unpin = recompute without the pin; no blended state (MATH-4).
             profile.pins.pop(sid, None)

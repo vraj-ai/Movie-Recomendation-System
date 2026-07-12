@@ -79,6 +79,39 @@ def test_benchmark_malformed_csv_is_empty_state_not_500(tmp_path):
     assert r.json()["available"] is False
 
 
+def test_benchmark_non_utf8_is_empty_state_not_500(tmp_path):
+    """P3-4: undecodable bytes must not escape as UnicodeDecodeError -> 500."""
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "comparison.csv").write_bytes(b"Approach,P\n\xff\xfe garbage,1\n")
+    app = create_app(
+        mode="fixture", profile_path=tmp_path / "p.json", results_dir=results
+    )
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.get("/api/benchmark")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["available"] is False
+    assert "recsys" in body["message"]
+
+
+def test_benchmark_oversized_field_is_empty_state_not_500(tmp_path):
+    """P3-4: a field past csv.field_size_limit raises csv.Error -> must be 200."""
+    huge = "x" * 200_000  # > default csv.field_size_limit() of 131072
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "comparison.csv").write_text(
+        f"Approach,P\n{huge},1\n", encoding="utf-8"
+    )
+    app = create_app(
+        mode="fixture", profile_path=tmp_path / "p.json", results_dir=results
+    )
+    c = TestClient(app, raise_server_exceptions=False)
+    r = c.get("/api/benchmark")
+    assert r.status_code == 200
+    assert r.json()["available"] is False
+
+
 def test_benchmark_ragged_csv_is_empty_state_not_500(tmp_path):
     c = make_client(tmp_path, csv="Approach,P\nonly-one-cell\n,,,,\n")
     r = c.get("/api/benchmark")

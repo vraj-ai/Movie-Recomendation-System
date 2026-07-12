@@ -119,6 +119,15 @@ def test_default_bind_is_localhost():
     assert args.host == "127.0.0.1"
 
 
+def test_cli_defaults_come_from_config():
+    """P3-6: the documented WEB_HOST/WEB_PORT constants must not be dead."""
+    from recsys.config import WEB_HOST, WEB_PORT
+    from recsys.web.__main__ import build_parser
+
+    args = build_parser().parse_args(["--fixture"])
+    assert (args.host, args.port) == (WEB_HOST, WEB_PORT)
+
+
 # -- WEB-SEC-2: the TMDB key never appears in any response ----------------
 
 

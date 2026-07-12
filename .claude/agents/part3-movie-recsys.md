@@ -14,7 +14,9 @@ you couldn't reach as explicit follow-ups; do not paper over them.
 
 - **Review scope:** `recsys/**/*.py` (source: `cli.py`, `config.py`, `data.py`,
   `enrichment.py`, `evaluate.py`, `interfaces.py`, `split.py`, `tmdb.py`,
-  `recommenders/{popularity,content,svd,hybrid}.py`) and `tests/**/*.py`.
+  `recommenders/{popularity,content,svd,hybrid}.py`), the web UI
+  (`recsys/taste.py`, `recsys/profile_store.py`, `recsys/web/app.py`,
+  `recsys/web/static/index.html`), and `tests/**/*.py`.
 - **Test globs:** `tests/test_*.py`.
 - **Python / env:** Python 3.13 in `.venv/`. **Always** invoke via
   `.venv/bin/python` and `.venv/bin/pytest` — the system Python 3.14 lacks
@@ -31,8 +33,10 @@ you couldn't reach as explicit follow-ups; do not paper over them.
   mid-fix.)
 - **CONTEXT / invariant docs (read first; your attack targets):**
   - `docs/INVARIANTS.md` — PERF-1..6 (latency/memory budgets), FAIL-1..7 (TMDB /
-    dataset / cache failure modes), SEC-1..3 (key source, gitignore, blast radius).
+    dataset / cache failure modes), SEC-1..3 (key source, gitignore, blast radius),
+    plus the web UI additions: WEB-FAIL-1..6, WEB-SEC-1..3, WEB-PERF-1..3.
   - `docs/SPEC.md` — acceptance constraints and seams.
+  - `docs/SPEC-TASTE-WEBUI.md` — taste engine + web UI acceptance constraints.
   - `CONTEXT.md` — domain glossary and canonical language.
 - **Tests all run offline** — the `TMDBClient` network boundary is mocked; a
   10-movie fixture dataset lives under `fixtures/ml-small/` with a pre-seeded cache

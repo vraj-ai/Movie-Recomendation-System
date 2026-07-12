@@ -9,6 +9,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from recsys.config import WEB_HOST, WEB_PORT  # P3-6: single source of truth
+
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="python -m recsys.web")
@@ -17,9 +19,9 @@ def build_parser() -> argparse.ArgumentParser:
                       help="serve the bundled fixture dataset")
     mode.add_argument("--real", action="store_true",
                       help="serve data/ml-latest-small (must exist)")
-    p.add_argument("--host", default="127.0.0.1",
-                   help="bind address (default 127.0.0.1, WEB-SEC-1)")
-    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--host", default=WEB_HOST,
+                   help=f"bind address (default {WEB_HOST}, WEB-SEC-1)")
+    p.add_argument("--port", type=int, default=WEB_PORT)
     return p
 
 
