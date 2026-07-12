@@ -56,6 +56,7 @@
     <button data-tab="recommend">Recommend</button>
     <button data-tab="similar">Similar</button>
     <button data-tab="profile">Profile</button>
+    <button data-tab="benchmark">Benchmark</button>
   </nav>
 
   <section id="tab-search">
@@ -92,6 +93,13 @@
     <ul id="ratings" class="cards"></ul>
   </section>
 
+  <section id="tab-benchmark" hidden>
+    <p class="muted">Legacy ML experiment results — read-only, computed by
+       the CLI, never by this server (MATH-3).</p>
+    <div id="bench-empty" class="banner" hidden></div>
+    <div id="bench-table"></div>
+  </section>
+
   <script>
     "use strict";
     const $ = (id) => document.getElementById(id);
@@ -114,7 +122,29 @@
         s.hidden = s.id !== `tab-${btn.dataset.tab}`;
       }
       if (btn.dataset.tab === "profile") loadProfile();
+      if (btn.dataset.tab === "benchmark") loadBenchmark();
     });
+
+    // ---- benchmark tab (read-only render; WEB-FAIL-6 empty state) --------
+    async function loadBenchmark() {
+      const r = await fetch("/api/benchmark");
+      const b = await r.json();
+      const empty = $("bench-empty");
+      const holder = $("bench-table");
+      holder.textContent = "";
+      empty.hidden = b.available;
+      if (!b.available) { empty.textContent = b.message; return; }
+      const t = el("table");
+      const hr = el("tr");
+      for (const c of b.columns) hr.appendChild(el("th", null, c));
+      t.appendChild(hr);
+      for (const row of b.rows) {
+        const tr = el("tr");
+        for (const cell of row) tr.appendChild(el("td", null, cell));
+        t.appendChild(tr);
+      }
+      holder.appendChild(t);
+    }
 
     // ---- status badge (WEB-FAIL-1: dataset always visible) ---------------
     async function loadStatus() {

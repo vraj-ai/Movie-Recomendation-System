@@ -12,6 +12,7 @@ Rules enforced here:
 
 from __future__ import annotations
 
+import csv
 import re
 from dataclasses import asdict
 from pathlib import Path
@@ -23,6 +24,7 @@ from pydantic import BaseModel
 from recsys.config import (
     FIXTURE_TMDB_CACHE,
     PROFILE_PATH,
+    RESULTS_DIR,
     TMDB_CACHE_SUBDIR,
 )
 from recsys.data import load_ratings
@@ -128,6 +130,7 @@ def create_app(
     profile_path: Path | None = None,
     tmdb_cache_dir: Path | None = None,
     tmdb_api_key: str | None = None,
+    results_dir: Path | None = None,
 ) -> FastAPI:
     """Build the app. Raises on missing prerequisites (WEB-FAIL-1)."""
     if mode not in _MODES:
@@ -315,6 +318,44 @@ def create_app(
         del profile.ratings[movie_id]
         store.save(profile.ratings, profile.pins)
         return {"ok": True, "profile": _profile_payload()}
+
+    # ------------------------------------------------------- W7 benchmark
+    # Read-only render of the legacy ML comparison table (MATH-3: the web
+    # UI never computes ML metrics — it only shows what the CLI experiment
+    # wrote). Missing/unreadable results are a truthful empty state, never
+    # a 500 (WEB-FAIL-6). The file is tiny; reading per request keeps the
+    # tab live after a re-run without a server restart (WEB-PERF-1 safe).
+    comparison_csv = (results_dir or RESULTS_DIR) / "comparison.csv"
+    empty_msg = (
+        "No benchmark results found. Run the legacy CLI experiment "
+        "(python -m recsys evaluate) to produce results/comparison.csv."
+    )
+
+    @app.get("/api/benchmark")
+    def get_benchmark() -> dict:
+        try:
+            with comparison_csv.open(newline="", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                header = next(reader, None)
+                rows = [
+                    row for row in reader
+                    if header and len(row) == len(header)
+                ]
+        except OSError:
+            header, rows = None, []
+        if not header or not rows:
+            return {
+                "available": False,
+                "columns": [],
+                "rows": [],
+                "message": empty_msg,
+            }
+        return {
+            "available": True,
+            "columns": header,
+            "rows": rows,
+            "message": "",
+        }
 
     @app.put("/api/profile/pins")
     def put_pin(body: PinBody) -> dict:
