@@ -1,6 +1,9 @@
 """``python -m recsys.web`` — run the taste UI locally.
 
-Data mode is explicit: pass ``--fixture`` or ``--real`` (WEB-FAIL-1).
+Data mode is explicit: pass ``--fixture``, ``--real``, or ``--full``
+(WEB-FAIL-1). ``--full`` serves the India-scale catalog (data/catalog.sqlite,
+effort 3) with the practical watch-log flow; it needs no TMDB key since
+posters are client-side hotlinks to image.tmdb.org.
 Binds 127.0.0.1 by default (WEB-SEC-1).
 """
 
@@ -19,6 +22,10 @@ def build_parser() -> argparse.ArgumentParser:
                       help="serve the bundled fixture dataset")
     mode.add_argument("--real", action="store_true",
                       help="serve data/ml-latest-small (must exist)")
+    mode.add_argument("--full", action="store_true",
+                      help="serve data/catalog.sqlite: search, 5-star watch "
+                           "log, and next-watch recommendations (must exist; "
+                           "build with scripts/build_catalog.py)")
     p.add_argument("--host", default=WEB_HOST,
                    help=f"bind address (default {WEB_HOST}, WEB-SEC-1)")
     p.add_argument("--port", type=int, default=WEB_PORT)
@@ -36,10 +43,15 @@ def main(argv: list[str] | None = None) -> int:
 
     load_dotenv()
     try:
-        app = create_app(
-            mode="fixture" if args.fixture else "real",
-            tmdb_api_key=os.environ.get("TMDB_API_KEY"),
-        )
+        if args.full:
+            # No TMDB key needed: --full mode never calls the TMDB API,
+            # posters are client-side hotlinks to image.tmdb.org.
+            app = create_app(mode="full")
+        else:
+            app = create_app(
+                mode="fixture" if args.fixture else "real",
+                tmdb_api_key=os.environ.get("TMDB_API_KEY"),
+            )
     except (FileNotFoundError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
