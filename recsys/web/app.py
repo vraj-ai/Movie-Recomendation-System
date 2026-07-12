@@ -43,6 +43,11 @@ SEARCH_MAX_QUERY = 200
 SEARCH_MAX_RESULTS = 20
 RECOMMEND_MAX_N = 100
 
+# W6 (#19): posters are pre-resolved server-side to public CDN URLs; the
+# browser never sees the TMDB API or the key (WEB-SEC-2). Missing art stays
+# None so the UI renders a text card, never a broken image (WEB-FAIL-4).
+POSTER_CDN = "https://image.tmdb.org/t/p/w185"
+
 _MODES = ("fixture", "real")
 
 
@@ -63,6 +68,7 @@ class NeighborTermModel(BaseModel):
 class RecommendItem(BaseModel):
     movie_id: int
     title: str
+    poster_url: str | None = None  # W6: CDN URL or None (WEB-FAIL-4)
     genre_affinity: float
     era_match: float
     pop_match: float
@@ -83,6 +89,7 @@ class RecommendResponse(BaseModel):
 class SimilarItem(BaseModel):
     movie_id: int
     title: str
+    poster_url: str | None = None  # W6: CDN URL or None (WEB-FAIL-4)
     genre_jaccard: float
     era_proximity: float
     pop_proximity: float
@@ -148,6 +155,14 @@ def create_app(
     )
     features = build_features(data.movies, rating_counts, content)
 
+    # W6 (#19): resolve posters once, server-side. Browser gets CDN URLs or
+    # nothing — never the API key, never a TMDB API endpoint (WEB-SEC-2).
+    poster_urls: dict[int, str] = {}
+    for mid, feats in content.items():
+        pp = feats.get("poster_path")
+        if isinstance(pp, str) and pp.startswith("/"):
+            poster_urls[mid] = POSTER_CDN + pp
+
     app = FastAPI(title="Taste Engine", docs_url=None, redoc_url=None)
     # Key stays in the closure; it is deliberately NOT stored on app.state
     # so no handler can accidentally serialize it (WEB-SEC-2).
@@ -191,6 +206,7 @@ def create_app(
             {
                 "movieId": int(row.movieId),
                 "title": row.title,
+                "poster_url": poster_urls.get(int(row.movieId)),
                 "genres": [] if row.genres == "(no genres listed)"
                 else row.genres.split("|"),
             }
@@ -211,7 +227,12 @@ def create_app(
         picks = taste_recommend(features, taste, profile.pins, n)
         return RecommendResponse(
             cold_start=len(taste) == 0,  # WEB-FAIL-5: labeled, never silent
-            results=[RecommendItem(**asdict(b)) for b in picks],
+            results=[
+                RecommendItem(
+                    **asdict(b), poster_url=poster_urls.get(b.movie_id)
+                )
+                for b in picks
+            ],
         )
 
     @app.get("/api/similar", response_model=SimilarResponse)
@@ -225,7 +246,9 @@ def create_app(
             movie_id=movie_id,
             title=features[movie_id].title,
             results=[
-                SimilarItem(**asdict(s))
+                SimilarItem(
+                    **asdict(s), poster_url=poster_urls.get(s.movie_id)
+                )
                 for s in similar_movies(movie_id, features, n)
             ],
         )

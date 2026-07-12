@@ -7,29 +7,116 @@
   <style>
     :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
     body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-    header { display: flex; align-items: baseline; gap: 1rem; }
+    header { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
     #badge { font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
              border: 1px solid currentColor; }
     #badge.fixture { color: #b45309; }
     #badge.real { color: #15803d; }
-    #search { width: 100%; padding: .6rem; font-size: 1rem; margin: 1rem 0; }
-    ul#results { list-style: none; padding: 0; }
-    ul#results li { padding: .4rem 0; border-bottom: 1px solid #8883; }
-    .genres { opacity: .7; font-size: .85rem; margin-left: .5rem; }
+    nav { display: flex; gap: .5rem; margin: 1rem 0; border-bottom: 1px solid #8884; }
+    nav button { background: none; border: none; padding: .5rem .9rem;
+                 font-size: 1rem; cursor: pointer; border-bottom: 2px solid transparent; }
+    nav button.active { border-bottom-color: currentColor; font-weight: 600; }
+    section[hidden] { display: none; }
+    input[type=search], input[type=number] { padding: .5rem; font-size: 1rem; }
+    input[type=search] { width: 100%; margin: .5rem 0; }
+    ul.cards { list-style: none; padding: 0; }
+    ul.cards > li { display: flex; gap: .8rem; padding: .6rem 0;
+                    border-bottom: 1px solid #8883; align-items: flex-start; }
+    .poster { width: 56px; min-width: 56px; height: 84px; object-fit: cover;
+              border-radius: 4px; }
+    .textcard { width: 56px; min-width: 56px; height: 84px; border-radius: 4px;
+                border: 1px dashed #8886; display: flex; align-items: center;
+                justify-content: center; font-size: .6rem; opacity: .6; }
+    .genres, .muted { opacity: .7; font-size: .85rem; }
+    .score { font-variant-numeric: tabular-nums; font-weight: 700; }
+    details { margin-top: .3rem; }
+    details table { border-collapse: collapse; font-size: .85rem;
+                    font-variant-numeric: tabular-nums; }
+    details td, details th { padding: .15rem .6rem .15rem 0; text-align: left; }
+    .banner { padding: .6rem .9rem; border: 1px solid #b45309; color: #b45309;
+              border-radius: 6px; margin: .5rem 0; }
+    .slider-row { display: grid; grid-template-columns: 10rem 1fr auto auto auto;
+                  gap: .6rem; align-items: center; padding: .3rem 0; }
+    .slider-row .val { font-variant-numeric: tabular-nums; min-width: 4.5rem; }
+    .pinned-mark { font-size: .75rem; border: 1px solid currentColor;
+                   border-radius: 999px; padding: 0 .5rem; color: #b45309; }
+    .rate { margin-left: auto; display: flex; gap: .3rem; align-items: center; }
+    button.small { font-size: .8rem; padding: .2rem .6rem; }
   </style>
 </head>
 <body>
   <header>
     <h1>Taste Engine</h1>
     <span id="badge">loading…</span>
+    <span id="stats" class="muted"></span>
   </header>
-  <p id="stats"></p>
-  <input id="search" type="search" placeholder="Search movies by title…"
-         autocomplete="off">
-  <ul id="results"></ul>
-  <script>
-    const $ = (id) => document.getElementById(id);
 
+  <nav id="tabs">
+    <button data-tab="search" class="active">Search &amp; Rate</button>
+    <button data-tab="recommend">Recommend</button>
+    <button data-tab="similar">Similar</button>
+    <button data-tab="profile">Profile</button>
+  </nav>
+
+  <section id="tab-search">
+    <input id="search" type="search" placeholder="Search movies by title…"
+           autocomplete="off">
+    <ul id="results" class="cards"></ul>
+  </section>
+
+  <section id="tab-recommend" hidden>
+    <p>
+      <label>Top <input id="rec-n" type="number" value="10" min="1" max="100"
+                        style="width:4.5rem"></label>
+      <button id="rec-go">Get picks</button>
+    </p>
+    <div id="rec-cold" class="banner" hidden></div>
+    <ul id="rec-list" class="cards"></ul>
+  </section>
+
+  <section id="tab-similar" hidden>
+    <p class="muted">Pick a movie to see what sits next to it — and why.</p>
+    <input id="sim-search" type="search" placeholder="Find the anchor movie…"
+           autocomplete="off">
+    <ul id="sim-picker" class="cards"></ul>
+    <h3 id="sim-title" hidden></h3>
+    <ul id="sim-list" class="cards"></ul>
+  </section>
+
+  <section id="tab-profile" hidden>
+    <div id="prof-cold" class="banner" hidden></div>
+    <h3>Derived weights <span class="muted">(pin to override — pinned wins
+        outright, never blended)</span></h3>
+    <div id="sliders"></div>
+    <h3>My ratings</h3>
+    <ul id="ratings" class="cards"></ul>
+  </section>
+
+  <script>
+    "use strict";
+    const $ = (id) => document.getElementById(id);
+    const el = (tag, cls, text) => {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text !== undefined) n.textContent = text;
+      return n;
+    };
+    const fmt = (x, d = 3) => Number(x).toFixed(d);
+
+    // ---- tabs ------------------------------------------------------------
+    $("tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-tab]");
+      if (!btn) return;
+      for (const b of $("tabs").querySelectorAll("button")) {
+        b.classList.toggle("active", b === btn);
+      }
+      for (const s of document.querySelectorAll("section")) {
+        s.hidden = s.id !== `tab-${btn.dataset.tab}`;
+      }
+      if (btn.dataset.tab === "profile") loadProfile();
+    });
+
+    // ---- status badge (WEB-FAIL-1: dataset always visible) ---------------
     async function loadStatus() {
       const r = await fetch("/api/status");
       const s = await r.json();
@@ -43,29 +130,239 @@
         `profile: ${s.profile.ratings} ratings, ${s.profile.pins} pins`;
     }
 
+    // ---- shared renderers (textContent only — no HTML sinks) -------------
+    function posterOrCard(m) {
+      if (m.poster_url) {
+        const img = el("img", "poster");
+        img.src = m.poster_url;   // pre-resolved CDN URL (WEB-SEC-2)
+        img.alt = "";
+        return img;
+      }
+      return el("div", "textcard", "no art");  // WEB-FAIL-4: never broken img
+    }
+
+    function movieLine(m, extra) {
+      const li = el("li");
+      li.append(posterOrCard(m));
+      const box = el("div");
+      box.append(el("strong", null, m.title));
+      if (m.genres) box.append(el("span", "genres", " " + m.genres.join(" · ")));
+      if (extra) box.append(extra);
+      li.append(box);
+      return li;
+    }
+
+    // ---- search & rate tab ------------------------------------------------
     let timer = null;
     $("search").addEventListener("input", (e) => {
       clearTimeout(timer);
-      timer = setTimeout(() => runSearch(e.target.value), 150);
+      timer = setTimeout(() => runSearch(e.target.value, $("results"), rateWidget), 150);
     });
 
-    async function runSearch(q) {
-      const ul = $("results");
+    async function runSearch(q, ul, extraFor) {
       if (!q.trim()) { ul.replaceChildren(); return; }
       const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
       if (!r.ok) return;
       const { results } = await r.json();
-      ul.replaceChildren(...results.map((m) => {
-        const li = document.createElement("li");
-        const strong = document.createElement("strong");
-        strong.textContent = m.title;               // textContent only — no
-        const span = document.createElement("span"); // innerHTML injection
-        span.className = "genres";
-        span.textContent = m.genres.join(" · ");
-        li.append(strong, span);
-        li.dataset.movieId = m.movieId;
+      ul.replaceChildren(...results.map((m) =>
+        movieLine(m, extraFor ? extraFor(m) : null)));
+    }
+
+    function rateWidget(m) {
+      const wrap = el("div", "rate");
+      const sel = el("select");
+      for (let v = 10; v >= 1; v--) {
+        const o = el("option", null, `${v / 2}★`);
+        o.value = v / 2;
+        sel.append(o);
+      }
+      const btn = el("button", "small", "Rate");
+      btn.addEventListener("click", async () => {
+        const r = await fetch("/api/ratings", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ movie_id: m.movieId, rating: Number(sel.value) }),
+        });
+        btn.textContent = r.ok ? "Saved ✓" : "Error";
+        if (r.ok) loadStatus();
+      });
+      wrap.append(sel, btn);
+      return wrap;
+    }
+
+    // ---- recommend tab (every pick carries its arithmetic, MATH-2) --------
+    $("rec-go").addEventListener("click", loadRecommend);
+
+    function breakdown(it) {
+      const d = el("details");
+      d.append(el("summary", "muted",
+        `breakdown — feature ${fmt(it.feature_term)} + neighbors ${fmt(it.neighbor_term)}`));
+      const t = el("table");
+      const row = (k, v) => {
+        const tr = el("tr");
+        tr.append(el("td", null, k), el("td", null, v));
+        t.append(tr);
+      };
+      row("genre_affinity", fmt(it.genre_affinity));
+      row("era_match", fmt(it.era_match));
+      row("pop_match", fmt(it.pop_match));
+      row("feature_match F(m)", fmt(it.feature_match));
+      row("neighbor_evidence N(m)", fmt(it.neighbor_evidence));
+      d.append(t);
+      if (it.neighbor_terms.length) {
+        const nt = el("table");
+        const hd = el("tr");
+        for (const h of ["cited movie", "my ★", "signal", "sim", "contrib"]) {
+          hd.append(el("th", null, h));
+        }
+        nt.append(hd);
+        for (const n of it.neighbor_terms) {
+          const tr = el("tr");
+          tr.append(
+            el("td", null, n.title), el("td", null, String(n.rating)),
+            el("td", null, fmt(n.signal)), el("td", null, fmt(n.similarity)),
+            el("td", null, fmt(n.contribution)));
+          nt.append(tr);
+        }
+        d.append(el("p", "muted", "cited evidence from my own ratings:"), nt);
+      }
+      return d;
+    }
+
+    async function loadRecommend() {
+      const n = Number($("rec-n").value) || 10;
+      const r = await fetch(`/api/recommend?n=${encodeURIComponent(n)}`);
+      if (!r.ok) return;
+      const body = await r.json();
+      $("rec-cold").hidden = !body.cold_start;
+      if (body.cold_start) {
+        $("rec-cold").textContent = "Cold start: no ratings yet — scores use " +
+          "neutral or pinned weights only (WEB-FAIL-5). Rate movies to teach it.";
+      }
+      $("rec-list").replaceChildren(...body.results.map((it) => {
+        const box = el("div");
+        box.append(el("span", "score", ` ${fmt(it.score, 2)} `),
+                   breakdown(it));
+        const li = movieLine(it, box);
         return li;
       }));
+    }
+
+    // ---- similar tab -------------------------------------------------------
+    let simTimer = null;
+    $("sim-search").addEventListener("input", (e) => {
+      clearTimeout(simTimer);
+      simTimer = setTimeout(
+        () => runSearch(e.target.value, $("sim-picker"), pickWidget), 150);
+    });
+
+    function pickWidget(m) {
+      const btn = el("button", "small", "Similar →");
+      btn.style.marginLeft = "auto";
+      btn.addEventListener("click", () => loadSimilar(m.movieId));
+      return btn;
+    }
+
+    async function loadSimilar(movieId) {
+      const r = await fetch(
+        `/api/similar?movie_id=${encodeURIComponent(movieId)}&n=10`);
+      if (!r.ok) return;
+      const body = await r.json();
+      $("sim-picker").replaceChildren();
+      $("sim-search").value = "";
+      $("sim-title").hidden = false;
+      $("sim-title").textContent = `Similar to: ${body.title}`;
+      $("sim-list").replaceChildren(...body.results.map((s) => {
+        const d = el("details");
+        d.append(el("summary", "muted", `sim ${fmt(s.similarity)}`));
+        const t = el("table");
+        for (const [k, v] of [
+          ["genre_jaccard (×0.6)", fmt(s.genre_jaccard)],
+          ["era_proximity (×0.25)", fmt(s.era_proximity)],
+          ["pop_proximity (×0.15)", fmt(s.pop_proximity)],
+        ]) {
+          const tr = el("tr");
+          tr.append(el("td", null, k), el("td", null, v));
+          t.append(tr);
+        }
+        d.append(t);
+        return movieLine(s, d);
+      }));
+    }
+
+    // ---- profile tab (MATH-4 pins; per-slider reset to derived) ------------
+    const SLIDER_RANGE = {
+      era: { min: 1880, max: 2030, step: 10 },
+      pop: { min: 0, max: 1, step: 0.05 },
+      genre: { min: -1, max: 1, step: 0.05 },
+    };
+
+    async function loadProfile() {
+      const [pr, rr] = await Promise.all([
+        fetch("/api/profile"), fetch("/api/ratings"),
+      ]);
+      if (!pr.ok || !rr.ok) return;
+      const prof = await pr.json();
+      const { ratings } = await rr.json();
+
+      $("prof-cold").hidden = !prof.cold_start;
+      if (prof.cold_start) {
+        $("prof-cold").textContent =
+          "No ratings yet — every derived weight is neutral (WEB-FAIL-5).";
+      }
+
+      $("sliders").replaceChildren(...Object.entries(prof.sliders)
+        .map(([sid, s]) => sliderRow(sid, s)));
+
+      $("ratings").replaceChildren(...ratings.map((row) => {
+        const li = el("li");
+        const del = el("button", "small", "remove");
+        del.addEventListener("click", async () => {
+          await fetch(`/api/ratings?movie_id=${encodeURIComponent(row.movie_id)}`,
+                      { method: "DELETE" });
+          loadProfile(); loadStatus();
+        });
+        const box = el("div");
+        box.append(el("strong", null, row.title),
+                   el("span", "muted", ` — my rating ${row.rating}★ `), del);
+        li.append(box);
+        return li;
+      }));
+    }
+
+    function sliderRow(sid, s) {
+      const kind = sid.startsWith("genre:") ? "genre" : sid;
+      const rng = SLIDER_RANGE[kind] || SLIDER_RANGE.genre;
+      const row = el("div", "slider-row");
+      row.append(el("label", null, sid));
+      const input = el("input");
+      input.type = "range";
+      input.min = rng.min; input.max = rng.max; input.step = rng.step;
+      input.value = s.value;
+      const val = el("span", "val",
+        `${fmt(s.value, 2)}${s.pinned ? "" : ` (derived ${fmt(s.derived, 2)})`}`);
+      input.addEventListener("input", () => {
+        val.textContent = fmt(Number(input.value), 2);
+      });
+      const pin = el("button", "small", "Pin");
+      pin.addEventListener("click", async () => {
+        await putPin(sid, Number(input.value));
+      });
+      const reset = el("button", "small", "Reset to derived");
+      reset.disabled = !s.pinned;
+      reset.addEventListener("click", async () => { await putPin(sid, null); });
+      row.append(input, val, pin, reset);
+      if (s.pinned) row.append(el("span", "pinned-mark", "pinned"));
+      return row;
+    }
+
+    async function putPin(slider, value) {
+      const r = await fetch("/api/profile/pins", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slider, value }),
+      });
+      if (r.ok) { loadProfile(); loadStatus(); }
     }
 
     loadStatus();
