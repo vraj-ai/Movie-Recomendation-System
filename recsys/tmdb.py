@@ -46,6 +46,9 @@ def _empty_features() -> dict:
         "cast": [],
         "crew": [],
         "overview": "",
+        # W6 (#19): TMDB poster path (e.g. "/abc.jpg") or None. Optional in
+        # the cache schema so pre-W6 entries stay valid (never re-fetched).
+        "poster_path": None,
     }
 
 
@@ -319,6 +322,14 @@ class TMDBClient:
             overview = raw.get("overview", "")
             if isinstance(overview, str):
                 features["overview"] = overview
+        except (TypeError, AttributeError):
+            pass
+
+        # Poster path (W6 #19) — non-empty string or None (FAIL-4).
+        try:
+            poster = raw.get("poster_path")
+            if isinstance(poster, str) and poster:
+                features["poster_path"] = poster
         except (TypeError, AttributeError):
             pass
 
