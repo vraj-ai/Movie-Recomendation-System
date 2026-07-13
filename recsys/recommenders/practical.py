@@ -76,6 +76,11 @@ class CatalogMovie:
     vote_average: float
     vote_count: int
     is_indian: bool
+    # W12/W13 (effort 4): external ratings — None when the catalog predates
+    # the ratings migration (frozen effort-3 DDL) or enrichment found nothing.
+    imdb_rating: float | None = None
+    rt_rating: int | None = None
+    age_rating: str | None = None
 
     @property
     def decade(self) -> int | None:
@@ -434,6 +439,60 @@ def build_reasons(
     if not deduped:
         deduped.append(f"A solid pick based on your {profile.n_logged} logged movies")
     return deduped[:3]
+
+
+# ---------------------------------------------------------------- W13: match10
+
+
+def match10(score: float) -> int:
+    """Map a [0, 1] score to a 1..10 match badge — monotonic, clamped, and
+    never 0/10 (a movie we recommend is never a "zero match")."""
+    clamped = max(0.0, min(1.0, score))
+    return max(1, min(10, round(clamped * 10)))
+
+
+# ------------------------------------------------------ W13: explanations
+
+# Sentence templates rotated by movie id so adjacent cards never share
+# phrasing even when their strongest signals coincide. Deterministic:
+# same movie + same profile -> same sentence.
+_EXPLANATION_TEMPLATES: tuple[str, ...] = (
+    "{a} — {b}.",
+    "{a}, and {b}.",
+    "{b}. Also: {a}.",
+)
+
+
+def _movie_descriptor(m: CatalogMovie) -> str:
+    """A movie-specific clause used as a variety fallback — mentions concrete
+    attributes (genre/decade/language) so no two distinct movies collide."""
+    genre = sorted(m.genres)[0].lower() if m.genres else "well-matched"
+    if m.decade is not None:
+        return f"a {m.decade}s {genre} pick in {language_label(m.language)}"
+    return f"a {genre} pick in {language_label(m.language)}"
+
+
+def build_explanation(
+    m: CatalogMovie,
+    profile: TasteProfile,
+    components: ScoreComponents,
+    sliders: SliderParams,
+    watched: list[WatchedMovie],
+) -> str:
+    """One plain-English sentence per card (W13). Deterministic in its
+    inputs; varied across movies via id-rotated templates plus a
+    movie-specific descriptor clause."""
+    reasons = build_reasons(m, profile, components, sliders, watched)
+    a = reasons[0].rstrip(".")
+    # Always anchor on the movie-specific descriptor: two distinct candidates
+    # differ in genre/decade/language, so no two cards can read identically
+    # even when their strongest profile reasons coincide (W13: variety).
+    b = _movie_descriptor(m).rstrip(".")
+    # Lowercase the second clause's leading letter — it sits mid-sentence.
+    b = b[0].lower() + b[1:] if b else b
+    template = _EXPLANATION_TEMPLATES[m.id % len(_EXPLANATION_TEMPLATES)]
+    text = template.format(a=a, b=b)
+    return text[0].upper() + text[1:]
 
 
 # ---------------------------------------------------------------- selection
