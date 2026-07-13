@@ -212,3 +212,28 @@ def test_ui_wires_quarantine_warning(client):
     """P3-5 (WEB-FAIL-3): the page must actually render the status flag."""
     html = client.get("/").text
     assert "quarantined" in html  # loadStatus() consumes profile.quarantined
+
+
+# ---- /part3 review (W11), finding E3-1 -----------------------------------
+
+
+def test_legacy_mutations_preserve_full_mode_watch_log(client, profile_path):
+    """E3-1: fixture/real and --full modes share the same PROFILE_PATH by
+    default. A legacy rating/pin write must never wipe the watched map the
+    --full watch log lives in (silent, unrecoverable data loss)."""
+    from recsys.web.profile_store import ProfileStore, WatchedEntry
+
+    store = ProfileStore(profile_path)
+    entry = WatchedEntry(rating=4.5, added_at="2026-07-12T00:00:00+00:00")
+    store.save({}, {}, {101: entry})
+
+    assert _put_rating(client, 1, 4.0).status_code == 200
+    assert store.load().watched == {101: entry}, "PUT /api/ratings wiped the watch log"
+
+    assert client.put(
+        "/api/profile/pins", json={"slider": "pop", "value": 0.5}
+    ).status_code == 200
+    assert store.load().watched == {101: entry}, "PUT pins wiped the watch log"
+
+    assert client.delete("/api/ratings", params={"movie_id": 1}).status_code == 200
+    assert store.load().watched == {101: entry}, "DELETE /api/ratings wiped the watch log"

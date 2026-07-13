@@ -352,10 +352,16 @@ def score_movie(
 
 
 def _anchor_reason(m: CatalogMovie, watched: list[WatchedMovie]) -> str | None:
-    """"Because you gave X 5 stars" for the log's best movie sharing genre/language."""
+    """"Because you gave X 5 stars" for the log's best movie sharing genre/language.
+
+    E3-4 (PRAC-2 honesty): only positively-weighted movies (rating above
+    neutral) may anchor — "Because you gave X 1 star" is never a reason to
+    recommend something.
+    """
     shared = [
         w for w in watched
         if w.movie.id != m.id
+        and w.weight > 0.0
         and (w.movie.genres & m.genres or w.movie.language == m.language)
     ]
     if not shared:

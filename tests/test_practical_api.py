@@ -496,3 +496,99 @@ def test_surprise_high_can_diverge_from_pure_top_score(logged_client):
     # Both are valid non-watched picks; they need not be disjoint, but the
     # mechanism must be exercised without error and return full-size lists.
     assert len(top) == 5
+
+
+# =====================================================================
+# /part3 review (W11) — findings E3-2 .. E3-5
+# =====================================================================
+
+from recsys.recommenders import practical as prac  # noqa: E402  (review tests)
+
+
+def test_search_huge_query_is_400_never_expensive(client):
+    """E3-2 (WEB-FAIL-2): the legacy modes cap q at 200 chars; --full must
+    too — a megabyte of prefix tokens is a free CPU-burn otherwise."""
+    # 2,000 chars: well past the 200-char cap but under httpx's URL limit,
+    # which would otherwise reject the request client-side before it hits app.
+    r = client.get("/api/search", params={"q": "a " * 1_000})
+    assert r.status_code == 400
+
+
+def test_search_query_at_cap_still_works(client):
+    r = client.get("/api/search", params={"q": "x" * 200})
+    assert r.status_code == 200
+    assert r.json() == {"results": []}
+
+
+def test_concurrent_watched_posts_lose_no_updates(client):
+    """E3-3: POST /api/watched is a read-modify-write of the profile file;
+    handlers run in a threadpool, so unsynchronized saves drop entries."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    ids = list(range(1, 21))  # all 20 catalog movies
+
+    def post(mid: int) -> int:
+        return client.post(
+            "/api/watched", json={"id": mid, "rating": 4.0}
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        codes = list(ex.map(post, ids))
+    assert codes == [200] * len(ids)
+    assert client.get("/api/watched").json()["count"] == len(ids)
+
+
+def _mk_movie(mid, title, genres, lang="en", year=2000):
+    return prac.CatalogMovie(
+        id=mid, title=title, year=year, language=lang,
+        genres=frozenset(genres), poster_path=None, popularity=10.0,
+        vote_average=7.0, vote_count=100, is_indian=False,
+    )
+
+
+def test_anchor_reason_never_cites_a_disliked_movie():
+    """E3-4 (PRAC-2 honesty): 'Because you gave Hated Film 1 star' is not a
+    reason to recommend anything — anchors must be positive signal only."""
+    hated = prac.WatchedMovie(id=1, rating=1.0, movie=_mk_movie(1, "Hated Film", {"Action"}))
+    assert prac._anchor_reason(_mk_movie(2, "Candidate", {"Action"}), [hated]) is None
+
+
+def test_anchor_reason_cites_best_liked_shared_movie():
+    liked = prac.WatchedMovie(id=1, rating=5.0, movie=_mk_movie(1, "Loved Film", {"Action"}))
+    hated = prac.WatchedMovie(id=3, rating=1.0, movie=_mk_movie(3, "Hated Film", {"Action"}))
+    out = prac._anchor_reason(_mk_movie(2, "Candidate", {"Action"}), [hated, liked])
+    assert out == "Because you gave Loved Film 5 stars"
+
+
+def test_next_reasons_never_cite_low_rated_anchors(client):
+    """E3-4 end-to-end: an all-dislikes log must never produce a
+    'Because you gave …' reason."""
+    for mid in (10, 11, 12):
+        _log(client, mid, 1.0)
+    body = client.get("/api/next", params={"n": 10}).json()
+    for item in body["items"]:
+        for reason in item["reasons"]:
+            assert not reason.startswith("Because you gave"), (item["title"], reason)
+
+
+def test_search_tied_rank_is_deterministic_by_id(tmp_path):
+    """E3-5: equal vote_count + popularity must tie-break on id, not on
+    whatever order the SQLite sorter happens to emit."""
+    p = tmp_path / "ties.sqlite"
+    conn = sqlite3.connect(p)
+    try:
+        conn.executescript(_CATALOG_DDL)
+        for mid, title in [(9, "Twin City II"), (5, "Twin City V"), (2, "Twin City IX")]:
+            conn.execute(
+                "INSERT INTO movies (id, title, year, language, genres, "
+                "popularity, vote_average, vote_count, is_indian, source) "
+                "VALUES (?, ?, 2000, 'en', 'Drama', 50.0, 7.0, 100, 0, 'ml')",
+                (mid, title),
+            )
+        conn.execute("INSERT INTO movies_fts(rowid, title) SELECT id, title FROM movies")
+        conn.commit()
+    finally:
+        conn.close()
+    client = _make_client(p, tmp_path)
+    ids = [r["id"] for r in client.get("/api/search", params={"q": "twin"}).json()["results"]]
+    assert ids == [2, 5, 9]

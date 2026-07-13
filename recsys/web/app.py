@@ -26,6 +26,7 @@ import csv
 import importlib
 import re
 import sqlite3
+import threading
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -190,6 +191,9 @@ def create_app(
         FIXTURE_TMDB_CACHE if mode == "fixture" else TMDB_CACHE_SUBDIR
     )
     store = ProfileStore(profile_path or PROFILE_PATH)
+    # E3-3: handlers run in a threadpool; profile writes are read-modify-
+    # write of one JSON file, so they must be serialized or updates get lost.
+    mutation_lock = threading.Lock()
 
     # WEB-FAIL-3 (P3-5): a quarantine event must stay visible to the operator.
     # store.load() reports it only on the single load that moved the file
@@ -365,18 +369,22 @@ def create_app(
             )
         if body.movie_id not in features:
             raise HTTPException(404, f"unknown movie_id {body.movie_id}")
-        profile = load_profile()
-        profile.ratings[body.movie_id] = r
-        store.save(profile.ratings, profile.pins)
+        with mutation_lock:  # E3-3
+            profile = load_profile()
+            profile.ratings[body.movie_id] = r
+            # E3-1: pass watched through — the --full watch log lives in the
+            # same file; saving without it silently wipes the log.
+            store.save(profile.ratings, profile.pins, profile.watched)
         return {"ok": True, "profile": _profile_payload()}
 
     @app.delete("/api/ratings")
     def delete_rating(movie_id: int = Query(...)) -> dict:
-        profile = load_profile()
-        if movie_id not in profile.ratings:
-            raise HTTPException(404, f"movie_id {movie_id} is not rated")
-        del profile.ratings[movie_id]
-        store.save(profile.ratings, profile.pins)
+        with mutation_lock:  # E3-3
+            profile = load_profile()
+            if movie_id not in profile.ratings:
+                raise HTTPException(404, f"movie_id {movie_id} is not rated")
+            del profile.ratings[movie_id]
+            store.save(profile.ratings, profile.pins, profile.watched)  # E3-1
         return {"ok": True, "profile": _profile_payload()}
 
     # ------------------------------------------------------- W7 benchmark
@@ -430,17 +438,18 @@ def create_app(
             lo, hi = GENRE_PIN_RANGE
         else:
             raise HTTPException(400, f"unknown slider {sid!r}")  # WEB-FAIL-2
-        profile = load_profile()
-        if body.value is None:
-            # Unpin = recompute without the pin; no blended state (MATH-4).
-            profile.pins.pop(sid, None)
-        else:
-            if not (lo <= body.value <= hi):
-                raise HTTPException(
-                    400, f"{sid} pin must be within [{lo}, {hi}]"
-                )
-            profile.pins[sid] = body.value
-        store.save(profile.ratings, profile.pins)
+        with mutation_lock:  # E3-3
+            profile = load_profile()
+            if body.value is None:
+                # Unpin = recompute without the pin; no blended state (MATH-4).
+                profile.pins.pop(sid, None)
+            else:
+                if not (lo <= body.value <= hi):
+                    raise HTTPException(
+                        400, f"{sid} pin must be within [{lo}, {hi}]"
+                    )
+                profile.pins[sid] = body.value
+            store.save(profile.ratings, profile.pins, profile.watched)  # E3-1
         return {"ok": True, "profile": _profile_payload()}
 
     return app
@@ -523,6 +532,9 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
         )
 
     store = ProfileStore(profile_path)
+    # E3-3: handlers run in a threadpool; profile writes are read-modify-
+    # write of one JSON file, so they must be serialized or updates get lost.
+    mutation_lock = threading.Lock()
     _quarantine_seen = {"flag": False}
 
     def load_profile():
@@ -574,6 +586,10 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
             PRACTICAL_SEARCH_DEFAULT_LIMIT, ge=1, le=PRACTICAL_SEARCH_MAX_LIMIT
         ),
     ) -> dict:
+        if len(q) > SEARCH_MAX_QUERY:
+            # E3-2 (WEB-FAIL-2): same cap as the legacy modes — reject junk
+            # before it becomes an arbitrarily large FTS prefix expression.
+            raise HTTPException(400, f"q longer than {SEARCH_MAX_QUERY} chars")
         fts_query = _sanitize_fts_query(q)
         if fts_query is None:
             return {"results": []}
@@ -582,7 +598,9 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
             "SELECT m.id, m.title, m.year, m.language, m.genres, m.poster_path "
             "FROM movies_fts JOIN movies m ON m.id = movies_fts.rowid "
             "WHERE movies_fts MATCH ? "
-            "ORDER BY m.vote_count DESC, m.popularity DESC LIMIT ?",
+            # E3-5: m.id tie-break — equal (vote_count, popularity) rows must
+            # rank deterministically, not by sorter whim.
+            "ORDER BY m.vote_count DESC, m.popularity DESC, m.id ASC LIMIT ?",
             (fts_query, limit),
         ).fetchall()
         results = []
@@ -626,20 +644,22 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
             raise HTTPException(422, "rating must be 0.5-5.0 in half steps")
         if body.id not in catalog:
             raise HTTPException(404, f"unknown movie id {body.id}")
-        profile = load_profile()
-        existing = profile.watched.get(body.id)
-        added_at = existing.added_at if existing is not None else _now_iso()
-        profile.watched[body.id] = WatchedEntry(rating=r, added_at=added_at)
-        store.save(profile.ratings, profile.pins, profile.watched)
+        with mutation_lock:  # E3-3
+            profile = load_profile()
+            existing = profile.watched.get(body.id)
+            added_at = existing.added_at if existing is not None else _now_iso()
+            profile.watched[body.id] = WatchedEntry(rating=r, added_at=added_at)
+            store.save(profile.ratings, profile.pins, profile.watched)
         return {"count": len(profile.watched)}
 
     @app.delete("/api/watched/{movie_id}")
     def delete_watched(movie_id: int) -> dict:
-        profile = load_profile()
-        if movie_id not in profile.watched:
-            raise HTTPException(404, f"movie id {movie_id} is not logged")
-        del profile.watched[movie_id]
-        store.save(profile.ratings, profile.pins, profile.watched)
+        with mutation_lock:  # E3-3
+            profile = load_profile()
+            if movie_id not in profile.watched:
+                raise HTTPException(404, f"movie id {movie_id} is not logged")
+            del profile.watched[movie_id]
+            store.save(profile.ratings, profile.pins, profile.watched)
         return {"count": len(profile.watched)}
 
     # -------------------------------------------------------- next watch
