@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -83,6 +84,19 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 _YEAR_SUFFIX_RE = re.compile(r"\s*\((\d{4})\)\s*$")
+
+# E3-6: the committed fixture must be byte-stable across reruns, so its
+# build_timestamp is a pinned constant, never wall clock.
+FIXTURE_BUILD_TIMESTAMP = "2026-07-12T00:00:00+00:00"
+
+
+def _build_timestamp() -> str:
+    """Wall clock, unless SOURCE_DATE_EPOCH is set (reproducible-builds.org
+    convention) — E3-6: lets any build be made byte-reproducible."""
+    sde = os.environ.get("SOURCE_DATE_EPOCH")
+    if sde is not None:
+        return datetime.fromtimestamp(int(sde), timezone.utc).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 # Deterministic fixture selection (business keys, not timestamps/order-of-
 # insertion) so ``--fixture`` produces byte-identical output on every rerun
@@ -428,7 +442,12 @@ def build_fixture_df(ml: pd.DataFrame, dump: pd.DataFrame) -> pd.DataFrame:
 # --------------------------------------------------------------------------- #
 
 
-def write_sqlite(df: pd.DataFrame, out_path: Path, meta_extra: dict[str, str]) -> None:
+def write_sqlite(
+    df: pd.DataFrame,
+    out_path: Path,
+    meta_extra: dict[str, str],
+    timestamp: str | None = None,
+) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     if out_path.exists():
         out_path.unlink()
@@ -491,7 +510,9 @@ def write_sqlite(df: pd.DataFrame, out_path: Path, meta_extra: dict[str, str]) -
             "ml_rows": str(int((df["source"] == "ml").sum())),
             "indian_rows": str(int((df["source"] == "indian").sum())),
             "both_rows": str(int((df["source"] == "both").sum())),
-            "build_timestamp": datetime.now(timezone.utc).isoformat(),
+            # E3-6: injectable/pinnable — wall clock in the artifact breaks
+            # byte reproducibility (CAT-1).
+            "build_timestamp": timestamp or _build_timestamp(),
         }
         meta = {**counts, **meta_extra}
         conn.executemany(
@@ -523,7 +544,7 @@ def write_report(df: pd.DataFrame, out_path: Path) -> dict:
         "indian_by_language": {k: int(v) for k, v in indian_by_lang.items()},
         "rows_with_poster": with_poster,
         "rows_with_poster_pct": round(100.0 * with_poster / total, 2) if total else 0.0,
-        "build_timestamp": datetime.now(timezone.utc).isoformat(),
+        "build_timestamp": _build_timestamp(),  # E3-6
         "sources": {
             "ml_movies_url": ML_FILES["movies.csv"],
             "ml_links_url": ML_FILES["links.csv"],
@@ -569,7 +590,12 @@ def main() -> int:
         logger.info("Building deterministic fixture (25 rows) ...")
         fixture_df = build_fixture_df(ml, dump)
         out_path = FIXTURES_DIR / "catalog-small.sqlite"
-        write_sqlite(fixture_df, out_path, {**meta_extra, "fixture": "true"})
+        write_sqlite(
+            fixture_df,
+            out_path,
+            {**meta_extra, "fixture": "true"},
+            timestamp=FIXTURE_BUILD_TIMESTAMP,  # E3-6: byte-stable fixture
+        )
         logger.info(
             "Wrote %s (%d rows: %d ml, %d indian, %d both)",
             out_path,

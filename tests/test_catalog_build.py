@@ -335,6 +335,8 @@ class TestFixtureIntegrity:
         if not all((downloads / f).exists() for f in required):
             pytest.skip("cache/downloads/ not populated locally")
 
+        committed_bytes = FIXTURE_CATALOG.read_bytes()
+
         result = subprocess.run(
             [sys.executable, str(REPO_ROOT / "scripts" / "build_catalog.py"), "--fixture"],
             cwd=REPO_ROOT,
@@ -343,6 +345,11 @@ class TestFixtureIntegrity:
             timeout=180,
         )
         assert result.returncode == 0, result.stderr
+
+        # E3-6: byte-identical, not merely row-identical — the committed
+        # fixture must be exactly what ``--fixture`` regenerates, or every
+        # contributor rebuild produces binary churn in git.
+        assert FIXTURE_CATALOG.read_bytes() == committed_bytes
 
         rebuilt = _connect(FIXTURE_CATALOG)
         try:
@@ -370,3 +377,74 @@ class TestPosterCoverage:
         assert 0.0 <= report["rows_with_poster_pct"] <= 100.0
         assert report["ml_sourced_total"] == 9742
         assert report["indian_rows"] + report["both_rows"] >= 8000
+
+
+# =====================================================================
+# /part3 review (W11) — finding E3-6: byte-level reproducibility
+# =====================================================================
+
+
+def _load_build_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "build_catalog", REPO_ROOT / "scripts" / "build_catalog.py"
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _tiny_df(mod):
+    import pandas as pd
+
+    return pd.DataFrame(
+        [
+            {
+                "id": 1, "tmdb_id": 11, "ml_id": 101, "title": "Alpha",
+                "year": 1999, "language": "en", "genres": "Drama",
+                "overview": "a", "poster_path": None, "popularity": 1.0,
+                "vote_average": 7.0, "vote_count": 10, "is_indian": 0,
+                "source": "ml",
+            },
+            {
+                "id": 2, "tmdb_id": 22, "ml_id": None, "title": "Beta",
+                "year": 2001, "language": "hi", "genres": "Action",
+                "overview": "b", "poster_path": "/b.jpg", "popularity": 2.0,
+                "vote_average": 8.0, "vote_count": 20, "is_indian": 1,
+                "source": "indian",
+            },
+        ]
+    )
+
+
+class TestByteReproducibility:
+    def test_write_sqlite_honors_source_date_epoch(self, tmp_path, monkeypatch):
+        """E3-6: with SOURCE_DATE_EPOCH pinned, two builds of the same frame
+        must be byte-identical — no wall-clock leaks into the artifact."""
+        mod = _load_build_module()
+        monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
+        df = _tiny_df(mod)
+        a, b = tmp_path / "a.sqlite", tmp_path / "b.sqlite"
+        mod.write_sqlite(df, a, {"schema_version": "1"})
+        mod.write_sqlite(df, b, {"schema_version": "1"})
+        assert a.read_bytes() == b.read_bytes()
+
+    def test_fixture_timestamp_is_pinned_constant(self, tmp_path):
+        """E3-6: --fixture must not embed wall clock even without
+        SOURCE_DATE_EPOCH; it pins FIXTURE_BUILD_TIMESTAMP so the committed
+        fixture never churns."""
+        mod = _load_build_module()
+        df = _tiny_df(mod)
+        out = tmp_path / "f.sqlite"
+        mod.write_sqlite(
+            df, out, {"fixture": "true"}, timestamp=mod.FIXTURE_BUILD_TIMESTAMP
+        )
+        conn = sqlite3.connect(out)
+        try:
+            row = conn.execute(
+                "SELECT value FROM meta WHERE key = 'build_timestamp'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row[0] == mod.FIXTURE_BUILD_TIMESTAMP
