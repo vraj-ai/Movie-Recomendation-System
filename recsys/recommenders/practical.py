@@ -448,7 +448,8 @@ def match10(score: float) -> int:
     """Map a [0, 1] score to a 1..10 match badge — monotonic, clamped, and
     never 0/10 (a movie we recommend is never a "zero match")."""
     clamped = max(0.0, min(1.0, score))
-    return max(1, min(10, round(clamped * 10)))
+    # E4-5: round half UP consistently (0.85 -> 9/10), not banker's rounding.
+    return max(1, min(10, int(clamped * 10 + 0.5)))
 
 
 # ------------------------------------------------------ W13: explanations
@@ -478,21 +479,54 @@ def build_explanation(
     components: ScoreComponents,
     sliders: SliderParams,
     watched: list[WatchedMovie],
+    salt: int = 0,
 ) -> str:
     """One plain-English sentence per card (W13). Deterministic in its
     inputs; varied across movies via id-rotated templates plus a
-    movie-specific descriptor clause."""
+    movie-specific descriptor clause.
+
+    Attribute-coincident movies (same genre/decade/language, same strongest
+    reason, ids congruent mod len(templates)) CAN collide — callers that
+    render a list must dedupe by bumping ``salt`` (rotates the template) and,
+    as a last resort, anchor on the movie's year (E4-1 / RAT-3)."""
     reasons = build_reasons(m, profile, components, sliders, watched)
     a = reasons[0].rstrip(".")
-    # Always anchor on the movie-specific descriptor: two distinct candidates
-    # differ in genre/decade/language, so no two cards can read identically
-    # even when their strongest profile reasons coincide (W13: variety).
     b = _movie_descriptor(m).rstrip(".")
+    if salt >= len(_EXPLANATION_TEMPLATES) and m.year is not None:
+        # Salted past every template: disambiguate with the concrete year.
+        b = f"{b} from {m.year}"
     # Lowercase the second clause's leading letter — it sits mid-sentence.
     b = b[0].lower() + b[1:] if b else b
-    template = _EXPLANATION_TEMPLATES[m.id % len(_EXPLANATION_TEMPLATES)]
+    template = _EXPLANATION_TEMPLATES[(m.id + salt) % len(_EXPLANATION_TEMPLATES)]
     text = template.format(a=a, b=b)
     return text[0].upper() + text[1:]
+
+
+def build_unique_explanations(
+    picks: list,
+    profile: TasteProfile,
+    sliders: SliderParams,
+    watched: list[WatchedMovie],
+) -> list[str]:
+    """Explanations for an ordered pick list with a RAT-3 uniqueness
+    guarantee: deterministic, and no two cards in the same response read
+    identically (E4-1). Salts rotate templates; the final salt appends the
+    year, and an explicit id suffix is the provably-unique last resort."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for p in picks:
+        text = ""
+        for salt in range(len(_EXPLANATION_TEMPLATES) + 1):
+            text = build_explanation(
+                p.movie, profile, p.components, sliders, watched, salt=salt
+            )
+            if text not in seen:
+                break
+        if text in seen:  # pragma: no cover — attribute+year twins
+            text = f"{text.rstrip('.')} (pick #{p.movie.id})."
+        seen.add(text)
+        out.append(text)
+    return out
 
 
 # ---------------------------------------------------------------- selection

@@ -40,7 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = REPO_ROOT / "data" / "catalog.sqlite"
 DEFAULT_CACHE_DIR = REPO_ROOT / "data" / "cache" / "omdb"
 
-OMDB_URL = "http://www.omdbapi.com/"
+OMDB_URL = "https://www.omdbapi.com/"  # E4-2: never leak the API key over plain HTTP
 REQUEST_DELAY = 0.2  # be polite on the free tier
 TIMEOUT = 10
 
@@ -146,9 +146,19 @@ def enrich(
                 try:
                     raw = json.loads(cache_path.read_text(encoding="utf-8"))
                 except (ValueError, OSError):
-                    logger.warning("corrupt cache entry for %s, skipping", movie_id)
-                    raw = None  # RAT-FAIL-2
-            elif not offline and api_key:
+                    # RAT-FAIL-2 / E4-3: quarantine the corrupt entry so it
+                    # no longer permanently blocks a re-fetch, then fall
+                    # through to the network path below (when available).
+                    logger.warning(
+                        "corrupt cache entry for %s — removing so it can be re-fetched",
+                        movie_id,
+                    )
+                    raw = None
+                    try:
+                        cache_path.unlink()
+                    except OSError:
+                        pass
+            if raw is None and not cache_path.exists() and not offline and api_key:
                 try:
                     raw = fetch_omdb(title, year, api_key)
                     cache_path.write_text(

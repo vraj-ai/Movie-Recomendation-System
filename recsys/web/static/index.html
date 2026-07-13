@@ -794,10 +794,13 @@
     function ratingsRow(m) {
       const row = el("div", "ratings-row");
       const dash = "—";
+      // E4-6: NaN guard — a non-numeric rating renders "—", never "IMDb NaN".
+      const imdb = Number(m.imdb_rating);
+      const rt = Number(m.rt_rating);
       row.append(el("span", "rating-item",
-        `IMDb ${m.imdb_rating != null ? Number(m.imdb_rating).toFixed(1) : dash}`));
+        `IMDb ${m.imdb_rating != null && Number.isFinite(imdb) ? imdb.toFixed(1) : dash}`));
       row.append(el("span", "rating-item",
-        `🍅 ${m.rt_rating != null ? m.rt_rating + "%" : dash}`));
+        `🍅 ${m.rt_rating != null && Number.isFinite(rt) ? rt + "%" : dash}`));
       row.append(el("span", "rating-item",
         `${m.age_rating != null && m.age_rating !== "" ? m.age_rating : dash}`));
       if (m.match10 != null) {

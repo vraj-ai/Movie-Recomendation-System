@@ -713,15 +713,16 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
         sliders = prac.SliderParams(surprise=surprise, crowd=crowd, era=era, indian=indian)
         picks = prac.recommend(catalog, watched, n, sliders)
         tprofile = prac.derive_taste_profile(watched)
+        # W13 + E4-1: response-level dedupe guarantees no two cards in the
+        # same payload read identically (RAT-3), still deterministic.
+        explanations = prac.build_unique_explanations(picks, tprofile, sliders, watched)
         return {
             "items": [
                 {
                     **movie_payload(p.movie),
                     "reasons": list(p.reasons),
                     # W13: one varied sentence per card + 1..10 match badge.
-                    "explanation": prac.build_explanation(
-                        p.movie, tprofile, p.components, sliders, watched
-                    ),
+                    "explanation": explanations[i],
                     "match10": prac.match10(p.score),
                     "math": {
                         "score": p.score,
@@ -734,7 +735,7 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
                         },
                     },
                 }
-                for p in picks
+                for i, p in enumerate(picks)
             ],
             "profile": {
                 "top_genres": list(tprofile.top_genres),
