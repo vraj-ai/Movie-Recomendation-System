@@ -37,6 +37,10 @@ EXPECTED_MOVIE_COLUMNS = [
     ("vote_count", "INTEGER"),
     ("is_indian", "INTEGER"),
     ("source", "TEXT"),
+    # W12 (effort 4): nullable external display-metadata ratings.
+    ("imdb_rating", "REAL"),
+    ("rt_rating", "INTEGER"),
+    ("age_rating", "TEXT"),
 ]
 
 

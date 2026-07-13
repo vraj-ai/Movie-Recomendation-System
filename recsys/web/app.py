@@ -514,9 +514,18 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
     # in memory, and the practical scorer needs the full candidate set on
     # every /api/next call anyway (WEB-PERF-2 parity).
     catalog: dict[int, "prac.CatalogMovie"] = {}
+    # W13: catalogs built before the W12 ratings migration (frozen effort-3
+    # DDL) lack these columns — tolerate their absence, never a 500.
+    movie_cols = {
+        r["name"] for r in conn.execute("PRAGMA table_info(movies)")
+    }
+    has_ratings_cols = {"imdb_rating", "rt_rating", "age_rating"} <= movie_cols
+    ratings_select = (
+        ", imdb_rating, rt_rating, age_rating" if has_ratings_cols else ""
+    )
     for row in conn.execute(
         "SELECT id, title, year, language, genres, poster_path, popularity, "
-        "vote_average, vote_count, is_indian FROM movies"
+        f"vote_average, vote_count, is_indian{ratings_select} FROM movies"
     ):
         catalog[row["id"]] = prac.CatalogMovie(
             id=row["id"],
@@ -529,6 +538,17 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
             vote_average=float(row["vote_average"] or 0.0),
             vote_count=int(row["vote_count"] or 0),
             is_indian=bool(row["is_indian"]),
+            imdb_rating=(
+                float(row["imdb_rating"])
+                if has_ratings_cols and row["imdb_rating"] is not None
+                else None
+            ),
+            rt_rating=(
+                int(row["rt_rating"])
+                if has_ratings_cols and row["rt_rating"] is not None
+                else None
+            ),
+            age_rating=row["age_rating"] if has_ratings_cols else None,
         )
 
     store = ProfileStore(profile_path)
@@ -557,6 +577,10 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
             "language": m.language,
             "genres": sorted(m.genres),
             "poster_url": poster_url(m.poster_path),
+            # W13: external ratings — None renders as "—" in the UI (W14).
+            "imdb_rating": m.imdb_rating,
+            "rt_rating": m.rt_rating,
+            "age_rating": m.age_rating,
         }
 
     app = FastAPI(title="Practical Watch Log", docs_url=None, redoc_url=None)
@@ -689,11 +713,17 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
         sliders = prac.SliderParams(surprise=surprise, crowd=crowd, era=era, indian=indian)
         picks = prac.recommend(catalog, watched, n, sliders)
         tprofile = prac.derive_taste_profile(watched)
+        # W13 + E4-1: response-level dedupe guarantees no two cards in the
+        # same payload read identically (RAT-3), still deterministic.
+        explanations = prac.build_unique_explanations(picks, tprofile, sliders, watched)
         return {
             "items": [
                 {
                     **movie_payload(p.movie),
                     "reasons": list(p.reasons),
+                    # W13: one varied sentence per card + 1..10 match badge.
+                    "explanation": explanations[i],
+                    "match10": prac.match10(p.score),
                     "math": {
                         "score": p.score,
                         "components": {
@@ -705,7 +735,7 @@ def _build_full_app(*, catalog_path: Path, profile_path: Path) -> FastAPI:
                         },
                     },
                 }
-                for p in picks
+                for i, p in enumerate(picks)
             ],
             "profile": {
                 "top_genres": list(tprofile.top_genres),

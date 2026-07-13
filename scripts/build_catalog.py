@@ -77,7 +77,12 @@ CREATE TABLE movies (
   vote_average REAL NOT NULL DEFAULT 0,
   vote_count INTEGER NOT NULL DEFAULT 0,
   is_indian INTEGER NOT NULL DEFAULT 0,
-  source TEXT NOT NULL CHECK (source IN ('ml','indian','both'))
+  source TEXT NOT NULL CHECK (source IN ('ml','indian','both')),
+  -- W12 (effort 4): external display-metadata ratings, nullable by design
+  -- (RAT-1: missing data stays NULL, never invented).
+  imdb_rating REAL,
+  rt_rating INTEGER,
+  age_rating TEXT
 );
 CREATE VIRTUAL TABLE movies_fts USING fts5(title, content='movies', content_rowid='id');
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -88,6 +93,32 @@ _YEAR_SUFFIX_RE = re.compile(r"\s*\((\d{4})\)\s*$")
 # E3-6: the committed fixture must be byte-stable across reruns, so its
 # build_timestamp is a pinned constant, never wall clock.
 FIXTURE_BUILD_TIMESTAMP = "2026-07-12T00:00:00+00:00"
+
+# W12: hand-pinned external ratings for the fixture so both render paths
+# (real values and NULL -> "—") are testable offline. Movies absent from this
+# map deliberately keep NULLs (RAT-1). Values as of 2026-07 OMDb, pinned.
+# fixture id -> (imdb_rating, rt_rating, age_rating)
+FIXTURE_RATINGS: dict[int, tuple[float | None, int | None, str | None]] = {
+    1: (8.3, 100, "G"),        # Toy Story
+    3: (8.3, 88, "R"),         # Heat
+    6: (8.6, 82, "R"),         # Se7en
+    10: (8.6, 93, "PG"),       # Star Wars: A New Hope
+    11: (8.9, 92, "R"),        # Pulp Fiction
+    12: (9.3, 89, "R"),        # The Shawshank Redemption
+    15: (8.4, 100, "PG-13"),   # 3 Idiots
+    17: (8.0, None, "Not Rated"),  # DDLJ — deliberate partial row
+    21: (8.0, 90, "Not Rated"),    # Bāhubali: The Beginning
+    24: (7.8, 95, "PG-13"),    # RRR
+}
+
+
+def apply_fixture_ratings(conn: sqlite3.Connection) -> None:
+    """Pin the hand-written fixture ratings (W12). Idempotent."""
+    for movie_id, (imdb, rt, rated) in FIXTURE_RATINGS.items():
+        conn.execute(
+            "UPDATE movies SET imdb_rating=?, rt_rating=?, age_rating=? WHERE id=?",
+            (imdb, rt, rated, movie_id),
+        )
 
 
 def _build_timestamp() -> str:
@@ -596,6 +627,13 @@ def main() -> int:
             {**meta_extra, "fixture": "true"},
             timestamp=FIXTURE_BUILD_TIMESTAMP,  # E3-6: byte-stable fixture
         )
+        # W12: pin the hand-written external ratings (+ deliberate NULLs).
+        conn = sqlite3.connect(out_path)
+        try:
+            apply_fixture_ratings(conn)
+            conn.commit()
+        finally:
+            conn.close()
         logger.info(
             "Wrote %s (%d rows: %d ml, %d indian, %d both)",
             out_path,

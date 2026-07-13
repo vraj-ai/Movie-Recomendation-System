@@ -211,6 +211,20 @@
       color: #ffd27d;
     }
 
+    /* ---- W14: explanation line + ratings row ---------------------------- */
+    .explanation { color: var(--muted); font-size: .82rem; line-height: 1.45; margin: 0; }
+    .ratings-row { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; }
+    .rating-item {
+      font-size: .72rem; padding: .22rem .55rem; border-radius: 6px;
+      background: rgba(255, 255, 255, .04); border: 1px solid var(--border);
+      color: var(--muted); font-variant-numeric: tabular-nums;
+    }
+    .match-badge {
+      font-size: .72rem; padding: .22rem .55rem; border-radius: 6px;
+      background: rgba(255, 182, 72, .12); border: 1px solid rgba(255, 182, 72, .28);
+      color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums;
+    }
+
     /* ---- math panel (PRAC-3: hidden until requested) ------------------- */
     .math-toggle {
       align-self: flex-start; background: none; border: 1px solid var(--border);
@@ -768,6 +782,33 @@
       return box;
     }
 
+    // W14 (RAT-3): one varied sentence per card; the chip list survives only
+    // as a fallback for payloads that predate `explanation`.
+    function explanationLine(m) {
+      if (m.explanation) return el("p", "explanation", m.explanation);
+      return reasonChips(m.reasons);
+    }
+
+    // W14 (RAT-1 / RAT-FAIL-3): IMDb / 🍅 / age badge / match ×/10.
+    // Missing data renders as "—" — never invented, never a broken card.
+    function ratingsRow(m) {
+      const row = el("div", "ratings-row");
+      const dash = "—";
+      // E4-6: NaN guard — a non-numeric rating renders "—", never "IMDb NaN".
+      const imdb = Number(m.imdb_rating);
+      const rt = Number(m.rt_rating);
+      row.append(el("span", "rating-item",
+        `IMDb ${m.imdb_rating != null && Number.isFinite(imdb) ? imdb.toFixed(1) : dash}`));
+      row.append(el("span", "rating-item",
+        `🍅 ${m.rt_rating != null && Number.isFinite(rt) ? rt + "%" : dash}`));
+      row.append(el("span", "rating-item",
+        `${m.age_rating != null && m.age_rating !== "" ? m.age_rating : dash}`));
+      if (m.match10 != null) {
+        row.append(el("span", "match-badge", `Match ${m.match10}/10`));
+      }
+      return row;
+    }
+
     // PRAC-3: math stays hidden behind an explicit toggle.
     function mathControls(m) {
       const frag = document.createDocumentFragment();
@@ -805,7 +846,8 @@
       if (m.year) meta.push(String(m.year));
       if (m.genres && m.genres.length) meta.push(m.genres.join(" · "));
       info.append(el("div", "hero-meta", meta.join("  ·  ")));
-      info.append(reasonChips(m.reasons));
+      info.append(ratingsRow(m));
+      info.append(explanationLine(m));
       info.append(mathControls(m));
       card.append(info);
       return card;
@@ -817,7 +859,8 @@
       const body = el("div", "card-body");
       body.append(el("div", "card-title", m.title));
       if (m.year) body.append(el("div", "card-year", String(m.year)));
-      body.append(reasonChips(m.reasons));
+      body.append(ratingsRow(m));
+      body.append(explanationLine(m));
       body.append(mathControls(m));
       card.append(body);
       return card;
