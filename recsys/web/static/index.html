@@ -3,105 +3,465 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Taste Engine</title>
+  <title>CineMatch — your next watch</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-    body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
-    header { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
-    #badge { font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
-             border: 1px solid currentColor; }
-    #badge.fixture { color: #b45309; }
-    #badge.real { color: #15803d; }
-    nav { display: flex; gap: .5rem; margin: 1rem 0; border-bottom: 1px solid #8884; }
-    nav button { background: none; border: none; padding: .5rem .9rem;
-                 font-size: 1rem; cursor: pointer; border-bottom: 2px solid transparent; }
-    nav button.active { border-bottom-color: currentColor; font-weight: 600; }
-    section[hidden] { display: none; }
-    input[type=search], input[type=number] { padding: .5rem; font-size: 1rem; }
-    input[type=search] { width: 100%; margin: .5rem 0; }
+    /* ---- design tokens : dark cinematic ------------------------------- */
+    :root {
+      color-scheme: dark;
+      --bg: #0c0e14;
+      --surface: #151823;
+      --surface-2: #1b1f2e;
+      --surface-3: #232838;
+      --border: rgba(255, 255, 255, .07);
+      --border-strong: rgba(255, 255, 255, .14);
+      --text: #e9eaf0;
+      --muted: #8b90a3;
+      --faint: #5f6474;
+      --accent: #ffb648;
+      --accent-2: #ff6a3d;
+      --accent-ink: #1a1206;
+      --good: #4ade80;
+      --radius: 18px;
+      --radius-sm: 12px;
+      --shadow: 0 18px 40px -20px rgba(0, 0, 0, .8), 0 4px 12px -6px rgba(0, 0, 0, .6);
+      --shadow-lift: 0 26px 60px -22px rgba(0, 0, 0, .9), 0 8px 20px -8px rgba(0, 0, 0, .7);
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
+              "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --ease: 200ms cubic-bezier(.2, .7, .3, 1);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: var(--font);
+      color: var(--text);
+      background:
+        radial-gradient(1200px 640px at 78% -10%, rgba(255, 106, 61, .14), transparent 60%),
+        radial-gradient(1000px 620px at 12% 4%, rgba(255, 182, 72, .10), transparent 55%),
+        var(--bg);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+
+    .wrap { max-width: 1140px; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2rem); }
+
+    /* ---- top bar ------------------------------------------------------- */
+    .topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 1rem; padding: 1.1rem 0 .9rem;
+    }
+    .brand { display: flex; align-items: center; gap: .7rem; }
+    .logo-dot {
+      width: 14px; height: 14px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 18px -2px var(--accent-2);
+    }
+    .brand h1 {
+      font-size: 1.15rem; letter-spacing: .14em; text-transform: uppercase;
+      margin: 0; font-weight: 700;
+    }
+    .topbar-right { display: flex; align-items: center; gap: .9rem; }
+    #badge {
+      font-size: .68rem; letter-spacing: .08em; text-transform: uppercase;
+      font-weight: 700; padding: .3rem .7rem; border-radius: 999px;
+      border: 1px solid var(--border-strong); color: var(--muted);
+      white-space: nowrap;
+    }
+    #badge.fixture { color: #ffd27d; border-color: rgba(255, 210, 125, .4); }
+    #badge.real    { color: var(--good); border-color: rgba(74, 222, 128, .4); }
+    #badge.full    { color: var(--accent); border-color: rgba(255, 182, 72, .5); }
+    #stats { font-size: .78rem; color: var(--faint); }
+    .ghost-link {
+      background: none; border: 1px solid var(--border); color: var(--muted);
+      font: inherit; font-size: .82rem; padding: .35rem .8rem; border-radius: 999px;
+      cursor: pointer; transition: var(--ease);
+    }
+    .ghost-link:hover { color: var(--text); border-color: var(--border-strong); }
+
+    /* ---- banners / toast ---------------------------------------------- */
+    .banner {
+      padding: .8rem 1rem; border-radius: var(--radius-sm); margin: 1rem 0;
+      background: rgba(255, 182, 72, .08); border: 1px solid rgba(255, 182, 72, .3);
+      color: #ffd27d; font-size: .9rem;
+    }
+    .toast {
+      position: fixed; left: 50%; bottom: 1.6rem; transform: translateX(-50%) translateY(1rem);
+      background: var(--surface-3); color: var(--text); border: 1px solid var(--border-strong);
+      padding: .8rem 1.2rem; border-radius: 999px; box-shadow: var(--shadow-lift);
+      font-size: .9rem; opacity: 0; pointer-events: none; transition: var(--ease); z-index: 60;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ---- hero search / onboarding ------------------------------------- */
+    .hero-search { text-align: center; padding: clamp(1.4rem, 5vw, 3rem) 0 1.4rem; }
+    .display {
+      font-size: clamp(2rem, 5vw, 3.2rem); line-height: 1.05; margin: 0 0 .5rem;
+      font-weight: 800; letter-spacing: -.02em;
+      background: linear-gradient(180deg, #fff, #b9bdcc);
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .subtle { color: var(--muted); margin: 0; font-size: 1.02rem; }
+    .search-wrap { position: relative; max-width: 620px; margin: 1.6rem auto 0; }
+    #watch-search {
+      width: 100%; font: inherit; font-size: 1.05rem; color: var(--text);
+      background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: 999px; padding: 1rem 1.4rem; outline: none;
+      box-shadow: var(--shadow); transition: var(--ease);
+    }
+    #watch-search::placeholder { color: var(--faint); }
+    #watch-search:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(255, 182, 72, .14), var(--shadow); }
+
+    .search-results {
+      position: absolute; left: 0; right: 0; top: calc(100% + .5rem); z-index: 40;
+      background: var(--surface); border: 1px solid var(--border-strong);
+      border-radius: var(--radius); box-shadow: var(--shadow-lift);
+      overflow: hidden; text-align: left; max-height: 60vh; overflow-y: auto;
+    }
+    .result {
+      display: flex; gap: .85rem; align-items: center; padding: .6rem .8rem;
+      cursor: pointer; transition: background 150ms ease; border-bottom: 1px solid var(--border);
+    }
+    .result:last-child { border-bottom: none; }
+    .result:hover, .result.active { background: var(--surface-2); }
+    .result .thumb { width: 42px; min-width: 42px; height: 63px; border-radius: 6px; }
+    .result .r-meta { min-width: 0; flex: 1; }
+    .result .r-title { font-weight: 600; }
+    .result .r-sub { color: var(--muted); font-size: .82rem; display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+    .chip {
+      font-size: .68rem; letter-spacing: .04em; text-transform: uppercase;
+      padding: .12rem .5rem; border-radius: 999px; border: 1px solid var(--border-strong);
+      color: var(--muted);
+    }
+    .watched-tag { color: var(--good); font-size: .78rem; font-weight: 600; }
+    .rating-tray {
+      grid-column: 1 / -1; padding: .9rem .8rem 1rem; background: var(--surface-2);
+      border-top: 1px solid var(--border); display: flex; align-items: center;
+      gap: 1rem; flex-wrap: wrap;
+    }
+    .rating-tray .prompt { color: var(--muted); font-size: .88rem; }
+    .empty-hint { padding: 1rem; color: var(--muted); text-align: center; font-size: .92rem; }
+
+    /* ---- stars --------------------------------------------------------- */
+    .stars { display: inline-flex; gap: .1rem; cursor: pointer; user-select: none; }
+    .star { position: relative; font-size: 1.55rem; line-height: 1; width: 1.05em; }
+    .star .bg { color: #3a3f52; }
+    .star .fill {
+      position: absolute; inset: 0; width: 0; overflow: hidden; color: var(--accent);
+      white-space: nowrap; transition: width 90ms ease;
+    }
+
+    /* ---- section heads ------------------------------------------------- */
+    section.block { margin: 2rem 0; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .section-head h3 { margin: 0; font-size: 1.3rem; font-weight: 700; display: flex; align-items: center; gap: .6rem; }
+    .count-badge {
+      font-size: .78rem; font-weight: 700; min-width: 1.5rem; text-align: center;
+      padding: .12rem .5rem; border-radius: 999px; background: var(--surface-3); color: var(--muted);
+    }
+    .grid-title { margin: 2rem 0 1rem; font-size: 1.05rem; color: var(--muted); font-weight: 600; letter-spacing: .02em; }
+
+    /* ---- progress ------------------------------------------------------ */
+    .progress-wrap { margin-bottom: 1.2rem; }
+    .progress-bar { height: 6px; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+    .progress-fill { height: 100%; width: 0; border-radius: 999px; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width var(--ease); }
+    .progress-label { color: var(--muted); font-size: .85rem; margin: .5rem 0 0; }
+
+    /* ---- poster grid & cards ------------------------------------------ */
+    .poster-grid {
+      display: grid; gap: 1.1rem;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    .movie-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; box-shadow: var(--shadow); transition: transform var(--ease), box-shadow var(--ease), border-color var(--ease);
+      position: relative; display: flex; flex-direction: column;
+    }
+    .movie-card:hover { transform: translateY(-6px); box-shadow: var(--shadow-lift); border-color: var(--border-strong); }
+    .poster { position: relative; aspect-ratio: 2 / 3; width: 100%; background: var(--surface-2); }
+    .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .poster-fallback {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; text-align: center; padding: .7rem;
+      color: rgba(255, 255, 255, .92);
+    }
+    .poster-fallback .initial { font-size: 2.6rem; font-weight: 800; opacity: .85; }
+    .poster-fallback .fb-title { font-size: .72rem; margin-top: .3rem; opacity: .8; line-height: 1.25; }
+    .card-body { padding: .7rem .8rem .9rem; display: flex; flex-direction: column; gap: .45rem; flex: 1; }
+    .card-title { font-weight: 600; font-size: .95rem; line-height: 1.25; }
+    .card-year { color: var(--muted); font-size: .8rem; }
+    .remove-btn {
+      position: absolute; top: .5rem; right: .5rem; z-index: 2; width: 28px; height: 28px;
+      border-radius: 50%; border: none; background: rgba(12, 14, 20, .78); color: #fff;
+      font-size: 1.1rem; line-height: 1; cursor: pointer; opacity: 0; transition: var(--ease);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .movie-card:hover .remove-btn { opacity: 1; }
+    .remove-btn:hover { background: var(--accent-2); }
+    .my-rating { position: absolute; bottom: .5rem; left: .5rem; z-index: 2;
+      background: rgba(12, 14, 20, .82); border-radius: 999px; padding: .18rem .55rem;
+      font-size: .78rem; color: var(--accent); font-weight: 700; }
+
+    /* ---- reason chips -------------------------------------------------- */
+    .reasons { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .reason {
+      font-size: .74rem; padding: .25rem .6rem; border-radius: 999px;
+      background: rgba(255, 182, 72, .10); border: 1px solid rgba(255, 182, 72, .22);
+      color: #ffd27d;
+    }
+
+    /* ---- math panel (PRAC-3: hidden until requested) ------------------- */
+    .math-toggle {
+      align-self: flex-start; background: none; border: 1px solid var(--border);
+      color: var(--faint); font: inherit; font-size: .72rem; padding: .25rem .6rem;
+      border-radius: 999px; cursor: pointer; transition: var(--ease);
+    }
+    .math-toggle:hover { color: var(--muted); border-color: var(--border-strong); }
+    .math-panel {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .74rem; background: #0a0c12; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: .7rem .8rem; margin-top: .2rem;
+      color: #c7ccdb; white-space: pre; overflow-x: auto;
+    }
+    .math-panel .k { color: var(--muted); }
+    .math-panel .v { color: var(--accent); }
+
+    /* ---- hero recommendation card ------------------------------------- */
+    .hero-rec {
+      display: grid; grid-template-columns: minmax(180px, 300px) 1fr; gap: 1.6rem;
+      background: linear-gradient(135deg, var(--surface-2), var(--surface));
+      border: 1px solid var(--border-strong); border-radius: var(--radius);
+      padding: 1.4rem; box-shadow: var(--shadow); margin-bottom: .5rem;
+    }
+    .hero-rec .poster { border-radius: var(--radius-sm); overflow: hidden; box-shadow: var(--shadow); }
+    .hero-rec .hero-info { display: flex; flex-direction: column; gap: .8rem; min-width: 0; }
+    .hero-eyebrow { color: var(--accent); font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
+    .hero-title { font-size: clamp(1.6rem, 3.4vw, 2.4rem); font-weight: 800; margin: 0; line-height: 1.05; letter-spacing: -.01em; }
+    .hero-meta { color: var(--muted); font-size: .95rem; }
+
+    /* ---- sliders ------------------------------------------------------- */
+    .sliders {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.3rem;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1.3rem; margin-bottom: 1.4rem;
+    }
+    .slider .slider-name { font-weight: 700; font-size: .95rem; }
+    .slider-ends { display: flex; justify-content: space-between; color: var(--faint); font-size: .74rem; margin: .5rem 0 .1rem; }
+    .slider input[type=range] {
+      -webkit-appearance: none; appearance: none; width: 100%; height: 5px; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent-2), var(--accent)); outline: none; margin: .3rem 0;
+    }
+    .slider input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%;
+      background: #fff; border: 3px solid var(--accent); cursor: pointer; box-shadow: var(--shadow);
+      transition: transform 120ms ease;
+    }
+    .slider input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.12); }
+    .slider input[type=range]::-moz-range-thumb {
+      width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); cursor: pointer;
+    }
+    .slider-help { color: var(--muted); font-size: .8rem; margin: .5rem 0 0; }
+
+    /* ---- buttons ------------------------------------------------------- */
+    .primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-ink);
+      border: none; font: inherit; font-weight: 700; font-size: .95rem; padding: .7rem 1.3rem;
+      border-radius: 999px; cursor: pointer; box-shadow: 0 8px 22px -8px rgba(255, 106, 61, .6);
+      transition: var(--ease);
+    }
+    .primary:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -10px rgba(255, 106, 61, .7); }
+    .primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+    /* ---- skeleton shimmer --------------------------------------------- */
+    .skeleton { border-radius: var(--radius); overflow: hidden; background: var(--surface); border: 1px solid var(--border); }
+    .skeleton .poster { aspect-ratio: 2/3; }
+    .shimmer {
+      background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%);
+      background-size: 200% 100%; animation: shimmer 1.3s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .empty-state { color: var(--muted); text-align: center; padding: 1.6rem; border: 1px dashed var(--border-strong); border-radius: var(--radius); }
+
+    /* ---- advanced (legacy) -------------------------------------------- */
+    #advanced { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid var(--border); }
+    #advanced h2 { font-size: 1rem; color: var(--muted); }
+    nav#tabs { display: flex; gap: .3rem; margin: 1rem 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    nav#tabs button {
+      background: none; border: none; padding: .5rem .9rem; font: inherit; color: var(--muted);
+      cursor: pointer; border-bottom: 2px solid transparent;
+    }
+    nav#tabs button.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+    #advanced section[id^="tab-"][hidden] { display: none; }
+    #advanced input[type=search], #advanced input[type=number] {
+      padding: .5rem .7rem; font: inherit; background: var(--surface); color: var(--text);
+      border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    }
+    #advanced input#search, #advanced input#sim-search { width: 100%; margin: .5rem 0; }
     ul.cards { list-style: none; padding: 0; }
-    ul.cards > li { display: flex; gap: .8rem; padding: .6rem 0;
-                    border-bottom: 1px solid #8883; align-items: flex-start; }
-    .poster { width: 56px; min-width: 56px; height: 84px; object-fit: cover;
-              border-radius: 4px; }
-    .textcard { width: 56px; min-width: 56px; height: 84px; border-radius: 4px;
-                border: 1px dashed #8886; display: flex; align-items: center;
-                justify-content: center; font-size: .6rem; opacity: .6; }
-    .genres, .muted { opacity: .7; font-size: .85rem; }
-    .score { font-variant-numeric: tabular-nums; font-weight: 700; }
-    details { margin-top: .3rem; }
-    details table { border-collapse: collapse; font-size: .85rem;
-                    font-variant-numeric: tabular-nums; }
-    details td, details th { padding: .15rem .6rem .15rem 0; text-align: left; }
-    .banner { padding: .6rem .9rem; border: 1px solid #b45309; color: #b45309;
-              border-radius: 6px; margin: .5rem 0; }
-    .slider-row { display: grid; grid-template-columns: 10rem 1fr auto auto auto;
-                  gap: .6rem; align-items: center; padding: .3rem 0; }
+    ul.cards > li { display: flex; gap: .8rem; padding: .6rem 0; border-bottom: 1px solid var(--border); align-items: flex-start; }
+    .legacy-poster { width: 48px; min-width: 48px; height: 72px; object-fit: cover; border-radius: 6px; }
+    .legacy-fallback { width: 48px; min-width: 48px; height: 72px; border-radius: 6px; position: relative; }
+    .genres, .muted { color: var(--muted); font-size: .85rem; }
+    #advanced .num { font-variant-numeric: tabular-nums; font-weight: 700; color: var(--accent); }
+    #advanced details { margin-top: .3rem; }
+    #advanced details table { border-collapse: collapse; font-size: .85rem; font-variant-numeric: tabular-nums; }
+    #advanced details td, #advanced details th { padding: .15rem .6rem .15rem 0; text-align: left; }
+    .slider-row { display: grid; grid-template-columns: 10rem 1fr auto auto auto; gap: .6rem; align-items: center; padding: .3rem 0; }
     .slider-row .val { font-variant-numeric: tabular-nums; min-width: 4.5rem; }
-    .pinned-mark { font-size: .75rem; border: 1px solid currentColor;
-                   border-radius: 999px; padding: 0 .5rem; color: #b45309; }
+    .pinned-mark { font-size: .75rem; border: 1px solid var(--accent); border-radius: 999px; padding: 0 .5rem; color: var(--accent); }
     .rate { margin-left: auto; display: flex; gap: .3rem; align-items: center; }
-    button.small { font-size: .8rem; padding: .2rem .6rem; }
+    button.small { font: inherit; font-size: .8rem; padding: .25rem .6rem; background: var(--surface-3); color: var(--text); border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+    #advanced select { background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: 8px; padding: .2rem; }
+
+    footer { margin: 3rem 0 2rem; color: var(--faint); font-size: .8rem; text-align: center; }
+
+    @media (max-width: 640px) {
+      .hero-rec { grid-template-columns: 1fr; }
+      .hero-rec .poster { max-width: 220px; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Taste Engine</h1>
-    <span id="badge">loading…</span>
-    <span id="stats" class="muted"></span>
-  </header>
+  <div class="wrap">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo-dot"></span>
+        <h1>CineMatch</h1>
+      </div>
+      <div class="topbar-right">
+        <span id="stats"></span>
+        <span id="badge">loading…</span>
+        <button id="advanced-toggle" class="ghost-link" type="button">Advanced</button>
+      </div>
+    </header>
 
-  <!-- WEB-FAIL-3: visible warning when a corrupt profile was quarantined -->
-  <div id="quarantine" class="banner" hidden></div>
+    <!-- WEB-FAIL-3: visible warning when a corrupt profile was quarantined -->
+    <div id="quarantine" class="banner" hidden></div>
 
-  <nav id="tabs">
-    <button data-tab="search" class="active">Search &amp; Rate</button>
-    <button data-tab="recommend">Recommend</button>
-    <button data-tab="similar">Similar</button>
-    <button data-tab="profile">Profile</button>
-    <button data-tab="benchmark">Benchmark</button>
-  </nav>
+    <main>
+      <!-- === onboarding / search ==================================== -->
+      <section class="hero-search">
+        <h2 class="display">What have you watched?</h2>
+        <p class="subtle">Log a few films you love — we'll line up your next watch.</p>
+        <div class="search-wrap">
+          <input id="watch-search" type="search" placeholder="Search a movie title…"
+                 autocomplete="off" aria-label="Search movies you have watched">
+          <div id="search-results" class="search-results" hidden></div>
+        </div>
+      </section>
 
-  <section id="tab-search">
-    <input id="search" type="search" placeholder="Search movies by title…"
-           autocomplete="off">
-    <ul id="results" class="cards"></ul>
-  </section>
+      <!-- === my movies ============================================== -->
+      <section class="block">
+        <div class="section-head">
+          <h3>My movies <span id="watched-count" class="count-badge">0</span></h3>
+        </div>
+        <div id="unlock" class="progress-wrap" hidden>
+          <div class="progress-bar"><div id="unlock-fill" class="progress-fill"></div></div>
+          <p id="unlock-label" class="progress-label"></p>
+        </div>
+        <div id="watched-empty" class="empty-state">
+          Nothing logged yet. Search above and tap a film to rate it.
+        </div>
+        <div id="watched-grid" class="poster-grid" hidden></div>
+      </section>
 
-  <section id="tab-recommend" hidden>
-    <p>
-      <label>Top <input id="rec-n" type="number" value="10" min="1" max="100"
-                        style="width:4.5rem"></label>
-      <button id="rec-go">Get picks</button>
-    </p>
-    <div id="rec-cold" class="banner" hidden></div>
-    <ul id="rec-list" class="cards"></ul>
-  </section>
+      <!-- === recommendations ======================================== -->
+      <section id="recs" class="block" hidden>
+        <div class="section-head">
+          <h3>Your next watch</h3>
+          <button id="pick-btn" class="primary" type="button">Pick my next watch</button>
+        </div>
 
-  <section id="tab-similar" hidden>
-    <p class="muted">Pick a movie to see what sits next to it — and why.</p>
-    <input id="sim-search" type="search" placeholder="Find the anchor movie…"
-           autocomplete="off">
-    <ul id="sim-picker" class="cards"></ul>
-    <h3 id="sim-title" hidden></h3>
-    <ul id="sim-list" class="cards"></ul>
-  </section>
+        <div class="sliders" id="taste-sliders">
+          <div class="slider" data-param="surprise">
+            <div class="slider-name">Comfort zone</div>
+            <div class="slider-ends"><span>Stick to my taste</span><span>Surprise me</span></div>
+            <input type="range" min="0" max="100" value="50" aria-label="Comfort zone">
+            <p class="slider-help">Left: more like the movies you already love. Right: stretch into new genres and styles.</p>
+          </div>
+          <div class="slider" data-param="crowd">
+            <div class="slider-name">Fame</div>
+            <div class="slider-ends"><span>Hidden gems</span><span>Blockbusters</span></div>
+            <input type="range" min="0" max="100" value="50" aria-label="Fame">
+            <p class="slider-help">Left: lesser-known films worth digging up. Right: crowd-pleasers everyone's heard of.</p>
+          </div>
+          <div class="slider" data-param="era">
+            <div class="slider-name">Era</div>
+            <div class="slider-ends"><span>Older classics</span><span>New releases</span></div>
+            <input type="range" min="0" max="100" value="50" aria-label="Era">
+            <p class="slider-help">Which decades your picks lean toward.</p>
+          </div>
+          <div class="slider" data-param="indian">
+            <div class="slider-name">Cinema mix</div>
+            <div class="slider-ends"><span>Global</span><span>Indian</span></div>
+            <input type="range" min="0" max="100" value="50" aria-label="Cinema mix">
+            <p class="slider-help">Balance between international films and Indian cinema (Hindi, Tamil, Telugu, Malayalam &amp; more).</p>
+          </div>
+        </div>
 
-  <section id="tab-profile" hidden>
-    <div id="prof-cold" class="banner" hidden></div>
-    <h3>Derived weights <span class="muted">(pin to override — pinned wins
-        outright, never blended)</span></h3>
-    <div id="sliders"></div>
-    <h3>My ratings</h3>
-    <ul id="ratings" class="cards"></ul>
-  </section>
+        <div id="rec-gate" class="banner" hidden></div>
+        <div id="hero-rec"></div>
+        <h4 id="next-title" class="grid-title" hidden>Next 10</h4>
+        <div id="next-grid" class="poster-grid"></div>
+      </section>
+    </main>
 
-  <section id="tab-benchmark" hidden>
-    <p class="muted">Legacy ML experiment results — read-only, computed by
-       the CLI, never by this server (MATH-3).</p>
-    <div id="bench-empty" class="banner" hidden></div>
-    <div id="bench-table"></div>
-  </section>
+    <!-- === advanced / legacy (hidden by default) ==================== -->
+    <section id="advanced" hidden>
+      <h2>Advanced — legacy taste-engine screens</h2>
+      <nav id="tabs">
+        <button data-tab="search" class="active">Search &amp; Rate</button>
+        <button data-tab="recommend">Recommend</button>
+        <button data-tab="similar">Similar</button>
+        <button data-tab="profile">Profile</button>
+        <button data-tab="benchmark">Benchmark</button>
+      </nav>
+
+      <section id="tab-search">
+        <input id="search" type="search" placeholder="Search movies by title…" autocomplete="off">
+        <ul id="results" class="cards"></ul>
+      </section>
+
+      <section id="tab-recommend" hidden>
+        <p>
+          <label>Top <input id="rec-n" type="number" value="10" min="1" max="100" style="width:5rem"></label>
+          <button id="rec-go" class="small">Get picks</button>
+        </p>
+        <div id="rec-cold" class="banner" hidden></div>
+        <ul id="rec-list" class="cards"></ul>
+      </section>
+
+      <section id="tab-similar" hidden>
+        <p class="muted">Pick a movie to see what sits next to it — and why.</p>
+        <input id="sim-search" type="search" placeholder="Find the anchor movie…" autocomplete="off">
+        <ul id="sim-picker" class="cards"></ul>
+        <h3 id="sim-title" hidden></h3>
+        <ul id="sim-list" class="cards"></ul>
+      </section>
+
+      <section id="tab-profile" hidden>
+        <div id="prof-cold" class="banner" hidden></div>
+        <h3>Derived weights <span class="muted">(pin to override — pinned wins outright, never blended)</span></h3>
+        <div id="sliders"></div>
+        <h3>My ratings</h3>
+        <ul id="ratings" class="cards"></ul>
+      </section>
+
+      <section id="tab-benchmark" hidden>
+        <p class="muted">Legacy ML experiment results — read-only, computed by the CLI, never by this server (MATH-3).</p>
+        <div id="bench-empty" class="banner" hidden></div>
+        <div id="bench-table"></div>
+      </section>
+    </section>
+
+    <footer>
+      CineMatch · a personal movie taste engine · runs locally, no accounts.
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
 
   <script>
     "use strict";
@@ -114,87 +474,424 @@
     };
     const fmt = (x, d = 3) => Number(x).toFixed(d);
 
-    // ---- tabs ------------------------------------------------------------
+    // Frozen-contract fields; tolerate legacy fixture shapes (movieId/no year).
+    const midOf = (m) => (m.id !== undefined ? m.id : m.movieId);
+
+    // ---- toast (network errors) ------------------------------------------
+    let toastTimer = null;
+    function toast(msg) {
+      const t = $("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => t.classList.remove("show"), 4000);
+    }
+    async function getJSON(url, opts) {
+      let r;
+      try { r = await fetch(url, opts); }
+      catch (e) { toast("Network error — is the server running?"); throw e; }
+      return r;
+    }
+
+    // ---- deterministic poster fallback (PRAC-4) --------------------------
+    function hashStr(s) {
+      let h = 0;
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+      return h;
+    }
+    function fallbackPoster(title) {
+      const t = title || "Untitled";
+      const h = hashStr(t);
+      const h1 = h % 360, h2 = (h1 + 40) % 360;
+      const box = el("div", "poster-fallback");
+      box.style.background =
+        `linear-gradient(150deg, hsl(${h1} 55% 26%), hsl(${h2} 60% 16%))`;
+      box.append(el("div", "initial", t.trim().charAt(0).toUpperCase() || "?"));
+      box.append(el("div", "fb-title", t));
+      return box;
+    }
+    // Builds a 2:3 poster element; swaps to styled fallback on null or onerror.
+    function posterEl(m, extraNodes) {
+      const poster = el("div", "poster");
+      const title = m.title || "";
+      if (m.poster_url) {
+        const img = el("img");
+        img.src = m.poster_url;      // pre-resolved CDN URL (WEB-SEC-2)
+        img.alt = title;
+        img.addEventListener("error", () => {
+          poster.replaceChildren(fallbackPoster(title));
+          if (extraNodes) for (const n of extraNodes) poster.append(n);
+        });
+        poster.append(img);
+      } else {
+        poster.append(fallbackPoster(title));   // PRAC-4: never a broken img
+      }
+      if (extraNodes) for (const n of extraNodes) poster.append(n);
+      return poster;
+    }
+
+    // ---- 5-star control (half steps, 0.5–5) ------------------------------
+    function starControl(onCommit) {
+      const wrap = el("div", "stars");
+      wrap.setAttribute("role", "slider");
+      let committed = 0;
+      const stars = [];
+      for (let i = 1; i <= 5; i++) {
+        const s = el("span", "star");
+        s.append(el("span", "bg", "★"));
+        const fill = el("span", "fill", "★");
+        s.append(fill);
+        s.dataset.index = String(i);
+        stars.push({ s, fill });
+        wrap.append(s);
+      }
+      const paint = (val) => {
+        for (let i = 0; i < 5; i++) {
+          const full = Math.min(1, Math.max(0, val - i));
+          stars[i].fill.style.width = (full * 100) + "%";
+        }
+      };
+      const valAt = (star, ev) => {
+        const rect = star.getBoundingClientRect();
+        const half = (ev.clientX - rect.left) < rect.width / 2 ? 0.5 : 1;
+        return Number(star.dataset.index) - 1 + half;
+      };
+      wrap.addEventListener("mousemove", (ev) => {
+        const star = ev.target.closest(".star");
+        if (star) paint(valAt(star, ev));
+      });
+      wrap.addEventListener("mouseleave", () => paint(committed));
+      wrap.addEventListener("click", (ev) => {
+        const star = ev.target.closest(".star");
+        if (!star) return;
+        committed = valAt(star, ev);
+        paint(committed);
+        onCommit(committed);
+      });
+      paint(0);
+      return wrap;
+    }
+
+    // ---- practical search ------------------------------------------------
+    let searchTimer = null, activeResult = null;
+    const searchBox = $("watch-search");
+    const resultsBox = $("search-results");
+
+    searchBox.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(runWatchSearch, 200);   // debounce ~200ms
+    });
+    searchBox.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        const first = resultsBox.querySelector(".result");
+        if (first) { ev.preventDefault(); first.click(); }
+      } else if (ev.key === "Escape") {
+        closeTray();
+      }
+    });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") closeTray(); });
+    document.addEventListener("click", (ev) => {
+      if (!ev.target.closest(".search-wrap")) hideResults();
+    });
+
+    function hideResults() { resultsBox.hidden = true; resultsBox.replaceChildren(); activeResult = null; }
+    function closeTray() {
+      const tray = resultsBox.querySelector(".rating-tray");
+      if (tray) tray.remove();
+      if (activeResult) activeResult.classList.remove("active");
+      activeResult = null;
+    }
+
+    async function runWatchSearch() {
+      const q = searchBox.value.trim();
+      if (!q) { hideResults(); return; }
+      const r = await getJSON(`/api/search?q=${encodeURIComponent(q)}&limit=20`);
+      if (!r.ok) { toast("Search failed."); return; }
+      const { results } = await r.json();
+      resultsBox.hidden = false;
+      if (!results.length) {
+        resultsBox.replaceChildren(el("div", "empty-hint", `No matches for “${q}”.`));
+        return;
+      }
+      resultsBox.replaceChildren(...results.map(resultRow));
+    }
+
+    function resultRow(m) {
+      const row = el("div", "result");
+      const thumb = m.poster_url
+        ? Object.assign(el("img", "thumb"), { src: m.poster_url, alt: "" })
+        : (() => { const d = fallbackPoster(m.title); d.className = "thumb"; d.style.position = "static"; return d; })();
+      if (thumb.tagName === "IMG") thumb.addEventListener("error", () => thumb.replaceWith(
+        (() => { const d = fallbackPoster(m.title); d.className = "thumb"; d.style.position = "static"; return d; })()));
+      const meta = el("div", "r-meta");
+      meta.append(el("div", "r-title", m.title));
+      const sub = el("div", "r-sub");
+      if (m.year) sub.append(el("span", null, String(m.year)));
+      if (m.language) sub.append(el("span", "chip", m.language));
+      if (m.watched) sub.append(el("span", "watched-tag", "✓ in my movies"));
+      meta.append(sub);
+      row.append(thumb, meta);
+      row.addEventListener("click", (ev) => {
+        if (ev.target.closest(".rating-tray")) return;
+        openTray(row, m);
+      });
+      return row;
+    }
+
+    function openTray(row, m) {
+      closeTray();
+      activeResult = row;
+      row.classList.add("active");
+      const tray = el("div", "rating-tray");
+      tray.append(el("span", "prompt", "Your rating:"));
+      tray.append(starControl(async (rating) => {
+        const r = await getJSON("/api/watched", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: midOf(m), rating }),
+        });
+        if (!r.ok) { toast("Could not save your rating."); return; }
+        toast(`Added ${m.title} — ${rating}★`);
+        searchBox.value = "";
+        hideResults();
+        loadWatched();
+      }));
+      row.append(tray);
+    }
+
+    // ---- my movies + unlock gate ----------------------------------------
+    const UNLOCK_AT = 3;
+    let watchedCount = 0;
+
+    async function loadWatched() {
+      const r = await getJSON("/api/watched");
+      if (!r.ok) { toast("Could not load your movies."); return; }
+      const body = await r.json();
+      const items = body.items || [];
+      watchedCount = body.count != null ? body.count : items.length;
+      $("watched-count").textContent = String(watchedCount);
+
+      const grid = $("watched-grid");
+      $("watched-empty").hidden = watchedCount > 0;
+      grid.hidden = watchedCount === 0;
+      grid.replaceChildren(...items.map(watchedCard));
+
+      const need = Math.max(0, UNLOCK_AT - watchedCount);
+      const unlock = $("unlock");
+      if (watchedCount >= UNLOCK_AT) {
+        unlock.hidden = true;
+        $("recs").hidden = false;
+      } else {
+        unlock.hidden = false;
+        $("recs").hidden = true;
+        $("unlock-fill").style.width = (watchedCount / UNLOCK_AT * 100) + "%";
+        $("unlock-label").textContent =
+          `Rate ${need} more movie${need === 1 ? "" : "s"} to unlock recommendations (${watchedCount}/${UNLOCK_AT}).`;
+      }
+    }
+
+    function watchedCard(m) {
+      const card = el("div", "movie-card");
+      const rm = el("button", "remove-btn", "×");
+      rm.title = "Remove from my movies";
+      rm.addEventListener("click", async () => {
+        const r = await getJSON(`/api/watched/${encodeURIComponent(midOf(m))}`, { method: "DELETE" });
+        if (r.ok) loadWatched(); else toast("Could not remove.");
+      });
+      const badges = [rm];
+      if (m.rating != null) badges.push(el("div", "my-rating", `${m.rating}★`));
+      card.append(posterEl(m, badges));
+      const body = el("div", "card-body");
+      body.append(el("div", "card-title", m.title));
+      if (m.year) body.append(el("div", "card-year", String(m.year)));
+      card.append(body);
+      return card;
+    }
+
+    // ---- sliders + "Pick my next watch" ----------------------------------
+    function sliderValues() {
+      const out = {};
+      for (const s of $("taste-sliders").querySelectorAll(".slider")) {
+        out[s.dataset.param] = s.querySelector("input").value;
+      }
+      return out;
+    }
+
+    function skeletonGrid(n) {
+      const nodes = [];
+      for (let i = 0; i < n; i++) {
+        const s = el("div", "skeleton");
+        s.append(el("div", "poster shimmer"));
+        nodes.push(s);
+      }
+      return nodes;
+    }
+
+    $("pick-btn").addEventListener("click", loadNext);
+
+    async function loadNext() {
+      const v = sliderValues();
+      $("rec-gate").hidden = true;
+      $("hero-rec").replaceChildren();
+      $("next-title").hidden = true;
+      $("next-grid").replaceChildren(...skeletonGrid(6));
+      const qs = `n=11&surprise=${v.surprise}&crowd=${v.crowd}&era=${v.era}&indian=${v.indian}`;
+      const r = await getJSON(`/api/next?${qs}`);
+      if (r.status === 409) {
+        const body = await r.json().catch(() => ({}));
+        const need = body.needed != null ? body.needed
+          : (body.detail && body.detail.needed != null ? body.detail.needed : UNLOCK_AT);
+        $("next-grid").replaceChildren();
+        $("rec-gate").hidden = false;
+        $("rec-gate").textContent =
+          `Rate ${need} more movie${need === 1 ? "" : "s"} first — recommendations need at least ${UNLOCK_AT} logged films.`;
+        return;
+      }
+      if (!r.ok) { $("next-grid").replaceChildren(); toast("Could not fetch recommendations."); return; }
+      const body = await r.json();
+      const items = body.items || [];
+      if (!items.length) {
+        $("next-grid").replaceChildren();
+        $("rec-gate").hidden = false;
+        $("rec-gate").textContent = "No fresh picks right now — try adjusting the sliders.";
+        return;
+      }
+      $("hero-rec").replaceChildren(heroCard(items[0]));
+      const rest = items.slice(1);
+      $("next-title").hidden = rest.length === 0;
+      $("next-grid").replaceChildren(...rest.map(recCard));
+    }
+
+    function reasonChips(reasons) {
+      const box = el("div", "reasons");
+      for (const reason of (reasons || [])) box.append(el("span", "reason", reason));
+      return box;
+    }
+
+    // PRAC-3: math stays hidden behind an explicit toggle.
+    function mathControls(m) {
+      const frag = document.createDocumentFragment();
+      const btn = el("button", "math-toggle", "Show the math");
+      const panel = el("pre", "math-panel");
+      panel.hidden = true;
+      const math = m.math || {};
+      const comps = math.components || {};
+      const lines = [];
+      lines.push(["total", math.score]);
+      for (const k of ["genre", "language", "era", "popularity", "rating_signal"]) {
+        if (comps[k] !== undefined) lines.push([k, comps[k]]);
+      }
+      for (const [k, val] of lines) {
+        const line = el("div");
+        line.append(el("span", "k", k.padEnd(14, " ")));
+        line.append(el("span", "v", val == null ? "—" : fmt(val, 3)));
+        panel.append(line);
+      }
+      btn.addEventListener("click", () => {
+        panel.hidden = !panel.hidden;
+        btn.textContent = panel.hidden ? "Show the math" : "Hide the math";
+      });
+      frag.append(btn, panel);
+      return frag;
+    }
+
+    function heroCard(m) {
+      const card = el("div", "hero-rec");
+      card.append(posterEl(m));
+      const info = el("div", "hero-info");
+      info.append(el("div", "hero-eyebrow", "Your next watch"));
+      info.append(el("h2", "hero-title", m.title));
+      const meta = [];
+      if (m.year) meta.push(String(m.year));
+      if (m.genres && m.genres.length) meta.push(m.genres.join(" · "));
+      info.append(el("div", "hero-meta", meta.join("  ·  ")));
+      info.append(reasonChips(m.reasons));
+      info.append(mathControls(m));
+      card.append(info);
+      return card;
+    }
+
+    function recCard(m) {
+      const card = el("div", "movie-card");
+      card.append(posterEl(m));
+      const body = el("div", "card-body");
+      body.append(el("div", "card-title", m.title));
+      if (m.year) body.append(el("div", "card-year", String(m.year)));
+      body.append(reasonChips(m.reasons));
+      body.append(mathControls(m));
+      card.append(body);
+      return card;
+    }
+
+    // ---- status badge (invariant: data mode always visible) --------------
+    async function loadStatus() {
+      const r = await getJSON("/api/status");
+      if (!r.ok) return;
+      const s = await r.json();
+      const badge = $("badge");
+      const labels = { fixture: "Fixture data", real: "Real dataset", full: "Full catalog" };
+      badge.textContent = labels[s.mode] || s.mode;
+      badge.className = s.mode;
+      const d = s.dataset || {};
+      $("stats").textContent = d.movies != null ? `${d.movies.toLocaleString()} movies` : "";
+      const qb = $("quarantine");
+      const quarantined = s.profile && s.profile.quarantined;
+      qb.hidden = !quarantined;
+      if (quarantined) {
+        qb.textContent = "Warning: your saved profile file was corrupt and has been " +
+          "quarantined (bytes preserved, never overwritten). Started from an empty profile.";
+      }
+    }
+
+    // ---- advanced toggle -------------------------------------------------
+    $("advanced-toggle").addEventListener("click", () => {
+      const adv = $("advanced");
+      adv.hidden = !adv.hidden;
+      if (!adv.hidden) adv.scrollIntoView({ behavior: "smooth" });
+    });
+
+    // =====================================================================
+    // ==== LEGACY taste-engine screens (Advanced) — behaviour preserved ===
+    // =====================================================================
     $("tabs").addEventListener("click", (e) => {
       const btn = e.target.closest("button[data-tab]");
       if (!btn) return;
       for (const b of $("tabs").querySelectorAll("button")) {
         b.classList.toggle("active", b === btn);
       }
-      for (const s of document.querySelectorAll("section")) {
-        s.hidden = s.id !== `tab-${btn.dataset.tab}`;
+      for (const sec of $("advanced").querySelectorAll("section[id^='tab-']")) {
+        sec.hidden = sec.id !== `tab-${btn.dataset.tab}`;
       }
       if (btn.dataset.tab === "profile") loadProfile();
       if (btn.dataset.tab === "benchmark") loadBenchmark();
     });
 
-    // ---- benchmark tab (read-only render; WEB-FAIL-6 empty state) --------
-    async function loadBenchmark() {
-      const r = await fetch("/api/benchmark");
-      const b = await r.json();
-      const empty = $("bench-empty");
-      const holder = $("bench-table");
-      holder.textContent = "";
-      empty.hidden = b.available;
-      if (!b.available) { empty.textContent = b.message; return; }
-      const t = el("table");
-      const hr = el("tr");
-      for (const c of b.columns) hr.appendChild(el("th", null, c));
-      t.appendChild(hr);
-      for (const row of b.rows) {
-        const tr = el("tr");
-        for (const cell of row) tr.appendChild(el("td", null, cell));
-        t.appendChild(tr);
-      }
-      holder.appendChild(t);
-    }
-
-    // ---- status badge (WEB-FAIL-1: dataset always visible) ---------------
-    async function loadStatus() {
-      const r = await fetch("/api/status");
-      const s = await r.json();
-      const badge = $("badge");
-      badge.textContent = s.mode === "fixture"
-        ? "FIXTURE DATA — tiny bundled sample" : "real dataset";
-      badge.className = s.mode;
-      $("stats").textContent =
-        `${s.dataset.movies} movies · ${s.dataset.ratings} ratings · ` +
-        `${s.tmdb.cached_movies} TMDB-cached · ` +
-        `profile: ${s.profile.ratings} ratings, ${s.profile.pins} pins`;
-      // WEB-FAIL-3: a corrupt profile file was moved aside — say so, loudly.
-      const qb = $("quarantine");
-      qb.hidden = !s.profile.quarantined;
-      if (s.profile.quarantined) {
-        qb.textContent = "Warning: your saved profile file was corrupt and " +
-          "has been quarantined to taste_profile.json.corrupt-<timestamp> " +
-          "(bytes preserved, never overwritten). The server restarted from " +
-          "an empty profile.";
-      }
-    }
-
-    // ---- shared renderers (textContent only — no HTML sinks) -------------
-    function posterOrCard(m) {
+    function legacyPoster(m) {
       if (m.poster_url) {
-        const img = el("img", "poster");
-        img.src = m.poster_url;   // pre-resolved CDN URL (WEB-SEC-2)
-        img.alt = "";
+        const img = el("img", "legacy-poster");
+        img.src = m.poster_url; img.alt = "";
+        img.addEventListener("error", () => {
+          const d = fallbackPoster(m.title); d.className = "legacy-fallback";
+          img.replaceWith(d);
+        });
         return img;
       }
-      return el("div", "textcard", "no art");  // WEB-FAIL-4: never broken img
+      const d = fallbackPoster(m.title);   // WEB-FAIL-4: never a broken img
+      d.className = "legacy-fallback";
+      return d;
     }
 
     function movieLine(m, extra) {
       const li = el("li");
-      li.append(posterOrCard(m));
+      li.append(legacyPoster(m));
       const box = el("div");
       box.append(el("strong", null, m.title));
-      if (m.genres) box.append(el("span", "genres", " " + m.genres.join(" · ")));
+      if (m.genres && m.genres.length) box.append(el("span", "genres", " " + m.genres.join(" · ")));
       if (extra) box.append(extra);
       li.append(box);
       return li;
     }
 
-    // ---- search & rate tab ------------------------------------------------
     let timer = null;
     $("search").addEventListener("input", (e) => {
       clearTimeout(timer);
@@ -203,11 +900,10 @@
 
     async function runSearch(q, ul, extraFor) {
       if (!q.trim()) { ul.replaceChildren(); return; }
-      const r = await fetch(`/api/search?q=${encodeURIComponent(q)}`);
+      const r = await getJSON(`/api/search?q=${encodeURIComponent(q)}`);
       if (!r.ok) return;
       const { results } = await r.json();
-      ul.replaceChildren(...results.map((m) =>
-        movieLine(m, extraFor ? extraFor(m) : null)));
+      ul.replaceChildren(...results.map((m) => movieLine(m, extraFor ? extraFor(m) : null)));
     }
 
     function rateWidget(m) {
@@ -220,10 +916,10 @@
       }
       const btn = el("button", "small", "Rate");
       btn.addEventListener("click", async () => {
-        const r = await fetch("/api/ratings", {
+        const r = await getJSON("/api/ratings", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ movie_id: m.movieId, rating: Number(sel.value) }),
+          body: JSON.stringify({ movie_id: midOf(m), rating: Number(sel.value) }),
         });
         btn.textContent = r.ok ? "Saved ✓" : "Error";
         if (r.ok) loadStatus();
@@ -232,7 +928,6 @@
       return wrap;
     }
 
-    // ---- recommend tab (every pick carries its arithmetic, MATH-2) --------
     $("rec-go").addEventListener("click", loadRecommend);
 
     function breakdown(it) {
@@ -251,19 +946,19 @@
       row("feature_match F(m)", fmt(it.feature_match));
       row("neighbor_evidence N(m)", fmt(it.neighbor_evidence));
       d.append(t);
-      if (it.neighbor_terms.length) {
+      if (it.neighbor_terms && it.neighbor_terms.length) {
         const nt = el("table");
         const hd = el("tr");
         for (const h of ["cited movie", "my ★", "signal", "sim", "contrib"]) {
           hd.append(el("th", null, h));
         }
         nt.append(hd);
-        for (const n of it.neighbor_terms) {
+        for (const nb of it.neighbor_terms) {
           const tr = el("tr");
           tr.append(
-            el("td", null, n.title), el("td", null, String(n.rating)),
-            el("td", null, fmt(n.signal)), el("td", null, fmt(n.similarity)),
-            el("td", null, fmt(n.contribution)));
+            el("td", null, nb.title), el("td", null, String(nb.rating)),
+            el("td", null, fmt(nb.signal)), el("td", null, fmt(nb.similarity)),
+            el("td", null, fmt(nb.contribution)));
           nt.append(tr);
         }
         d.append(el("p", "muted", "cited evidence from my own ratings:"), nt);
@@ -273,7 +968,7 @@
 
     async function loadRecommend() {
       const n = Number($("rec-n").value) || 10;
-      const r = await fetch(`/api/recommend?n=${encodeURIComponent(n)}`);
+      const r = await getJSON(`/api/recommend?n=${encodeURIComponent(n)}`);
       if (!r.ok) return;
       const body = await r.json();
       $("rec-cold").hidden = !body.cold_start;
@@ -283,31 +978,26 @@
       }
       $("rec-list").replaceChildren(...body.results.map((it) => {
         const box = el("div");
-        box.append(el("span", "score", ` ${fmt(it.score, 2)} `),
-                   breakdown(it));
-        const li = movieLine(it, box);
-        return li;
+        box.append(el("span", "num", ` ${fmt(it.score, 2)} `), breakdown(it));
+        return movieLine(it, box);
       }));
     }
 
-    // ---- similar tab -------------------------------------------------------
     let simTimer = null;
     $("sim-search").addEventListener("input", (e) => {
       clearTimeout(simTimer);
-      simTimer = setTimeout(
-        () => runSearch(e.target.value, $("sim-picker"), pickWidget), 150);
+      simTimer = setTimeout(() => runSearch(e.target.value, $("sim-picker"), pickWidget), 150);
     });
 
     function pickWidget(m) {
       const btn = el("button", "small", "Similar →");
       btn.style.marginLeft = "auto";
-      btn.addEventListener("click", () => loadSimilar(m.movieId));
+      btn.addEventListener("click", () => loadSimilar(midOf(m)));
       return btn;
     }
 
     async function loadSimilar(movieId) {
-      const r = await fetch(
-        `/api/similar?movie_id=${encodeURIComponent(movieId)}&n=10`);
+      const r = await getJSON(`/api/similar?movie_id=${encodeURIComponent(movieId)}&n=10`);
       if (!r.ok) return;
       const body = await r.json();
       $("sim-picker").replaceChildren();
@@ -332,7 +1022,6 @@
       }));
     }
 
-    // ---- profile tab (MATH-4 pins; per-slider reset to derived) ------------
     const SLIDER_RANGE = {
       era: { min: 1880, max: 2030, step: 10 },
       pop: { min: 0, max: 1, step: 0.05 },
@@ -340,28 +1029,23 @@
     };
 
     async function loadProfile() {
-      const [pr, rr] = await Promise.all([
-        fetch("/api/profile"), fetch("/api/ratings"),
-      ]);
+      const [pr, rr] = await Promise.all([getJSON("/api/profile"), getJSON("/api/ratings")]);
       if (!pr.ok || !rr.ok) return;
       const prof = await pr.json();
       const { ratings } = await rr.json();
 
       $("prof-cold").hidden = !prof.cold_start;
       if (prof.cold_start) {
-        $("prof-cold").textContent =
-          "No ratings yet — every derived weight is neutral (WEB-FAIL-5).";
+        $("prof-cold").textContent = "No ratings yet — every derived weight is neutral (WEB-FAIL-5).";
       }
 
-      $("sliders").replaceChildren(...Object.entries(prof.sliders)
-        .map(([sid, s]) => sliderRow(sid, s)));
+      $("sliders").replaceChildren(...Object.entries(prof.sliders).map(([sid, s]) => sliderRow(sid, s)));
 
       $("ratings").replaceChildren(...ratings.map((row) => {
         const li = el("li");
         const del = el("button", "small", "remove");
         del.addEventListener("click", async () => {
-          await fetch(`/api/ratings?movie_id=${encodeURIComponent(row.movie_id)}`,
-                      { method: "DELETE" });
+          await getJSON(`/api/ratings?movie_id=${encodeURIComponent(row.movie_id)}`, { method: "DELETE" });
           loadProfile(); loadStatus();
         });
         const box = el("div");
@@ -383,13 +1067,9 @@
       input.value = s.value;
       const val = el("span", "val",
         `${fmt(s.value, 2)}${s.pinned ? "" : ` (derived ${fmt(s.derived, 2)})`}`);
-      input.addEventListener("input", () => {
-        val.textContent = fmt(Number(input.value), 2);
-      });
+      input.addEventListener("input", () => { val.textContent = fmt(Number(input.value), 2); });
       const pin = el("button", "small", "Pin");
-      pin.addEventListener("click", async () => {
-        await putPin(sid, Number(input.value));
-      });
+      pin.addEventListener("click", async () => { await putPin(sid, Number(input.value)); });
       const reset = el("button", "small", "Reset to derived");
       reset.disabled = !s.pinned;
       reset.addEventListener("click", async () => { await putPin(sid, null); });
@@ -399,7 +1079,7 @@
     }
 
     async function putPin(slider, value) {
-      const r = await fetch("/api/profile/pins", {
+      const r = await getJSON("/api/profile/pins", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ slider, value }),
@@ -407,7 +1087,29 @@
       if (r.ok) { loadProfile(); loadStatus(); }
     }
 
+    async function loadBenchmark() {
+      const r = await getJSON("/api/benchmark");
+      const b = await r.json();
+      const empty = $("bench-empty");
+      const holder = $("bench-table");
+      holder.textContent = "";
+      empty.hidden = b.available;
+      if (!b.available) { empty.textContent = b.message; return; }
+      const t = el("table");
+      const hr = el("tr");
+      for (const c of b.columns) hr.appendChild(el("th", null, c));
+      t.appendChild(hr);
+      for (const rowData of b.rows) {
+        const tr = el("tr");
+        for (const cell of rowData) tr.appendChild(el("td", null, cell));
+        t.appendChild(tr);
+      }
+      holder.appendChild(t);
+    }
+
+    // ---- boot ------------------------------------------------------------
     loadStatus();
+    loadWatched();
   </script>
 </body>
 </html>

@@ -66,3 +66,52 @@ WEB_HOST = "127.0.0.1"  # WEB-SEC-1: localhost only
 WEB_PORT = 8977
 PROFILE_PATH = PROJECT_ROOT / "profile" / "taste_profile.json"  # gitignored (WEB-SEC-3)
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p/w342"  # CDN only, no key (WEB-SEC-2)
+
+# --- Effort 3: practical watch log (--full mode) ----------------------------
+# Catalog contract: docs/plan/effort3-practical-watchlog.md ("Catalog contract").
+CATALOG_PATH = DATA_DIR / "catalog.sqlite"
+CATALOG_BUILD_INSTRUCTIONS = (
+    "Build it with: python scripts/build_catalog.py "
+    "(see docs/plan/effort3-practical-watchlog.md for the catalog contract)."
+)
+
+# /api/next request bounds (all validated 4xx/422, never 500 — WEB-FAIL-2)
+PRACTICAL_NEXT_N_DEFAULT = 10
+PRACTICAL_NEXT_N_MAX = 50
+PRACTICAL_MIN_LOGGED = 3  # < this many watched movies -> 409 log_more (PRAC contract)
+
+# Taste weight from a 5-star rating: w = (r - NEUTRAL) / SCALE, r in [0.5, 5.0].
+PRACTICAL_SIGNAL_NEUTRAL = 3.0
+PRACTICAL_SIGNAL_SCALE = 2.0
+
+# Era arithmetic (decades)
+PRACTICAL_ERA_TOL_MIN = 8.0        # floor added to the weighted decade spread
+PRACTICAL_ERA_LOW_DECADE = 1975.0  # era slider = 0 anchor ("older classics")
+PRACTICAL_ERA_HIGH_DECADE = 2015.0  # era slider = 100 anchor ("new releases")
+
+# Bayesian shrinkage for the rating_signal component: shrink vote_average/10
+# toward 0.5 when vote_count is low (avoids a single 10/10 vote dominating).
+PRACTICAL_RATING_SHRINK_K = 20.0
+
+# Multiplier range for the "indian" slider on candidate scores: at the
+# slider's extreme, is_indian rows are scaled by (1 +/- this); non-indian
+# rows move inversely so the two ends actually swap the top of the list.
+PRACTICAL_INDIAN_BOOST = 0.8
+
+# Final score = weighted sum of the 5 math.components (each in [0, 1]),
+# weights sum to 1; the indian multiplier is applied after this sum so it
+# never appears as a fabricated 6th component (contract freezes exactly 5).
+PRACTICAL_W_GENRE = 0.35
+PRACTICAL_W_LANGUAGE = 0.15
+PRACTICAL_W_ERA = 0.20
+PRACTICAL_W_POPULARITY = 0.15
+PRACTICAL_W_RATING = 0.15
+
+# "surprise" slider: pool to sample from (top decile) and how hard already-
+# dominant logged genres get downweighted in that pool as surprise -> 100.
+PRACTICAL_SURPRISE_POOL_FRACTION = 0.10
+PRACTICAL_SURPRISE_DOMINANCE_PENALTY = 0.4
+
+# /api/search
+PRACTICAL_SEARCH_DEFAULT_LIMIT = 20
+PRACTICAL_SEARCH_MAX_LIMIT = 50
