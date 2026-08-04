@@ -499,7 +499,7 @@ def test_surprise_high_can_diverge_from_pure_top_score(logged_client):
 
 
 # =====================================================================
-# /part3 review (W11) — findings E3-2 .. E3-5
+# /debugger review (W11) — findings E3-2 .. E3-5
 # =====================================================================
 
 from recsys.recommenders import practical as prac  # noqa: E402  (review tests)

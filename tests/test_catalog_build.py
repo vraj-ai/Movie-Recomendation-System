@@ -384,7 +384,7 @@ class TestPosterCoverage:
 
 
 # =====================================================================
-# /part3 review (W11) — finding E3-6: byte-level reproducibility
+# /debugger review (W11) — finding E3-6: byte-level reproducibility
 # =====================================================================
 
 

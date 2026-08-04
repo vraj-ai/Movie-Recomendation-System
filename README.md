@@ -89,5 +89,5 @@ pytest -q      # 147 passing (offline, fixture-based)
 - **Handoffs:** [planning](docs/handoffs/2026-07-10-planning.md) · [implementation](docs/handoffs/2026-07-10-implementation.md) · [review](docs/handoffs/2026-07-10-review.md)
 
 > Status: **implementation + code review complete** — all four approaches built,
-> **147 tests passing**, reviewed via `/part3` (SEC-1 key-leak, test-gate, and
+> **147 tests passing**, reviewed via `/debugger` (SEC-1 key-leak, test-gate, and
 > empty-split bugs fixed). Ready for a real-data run.

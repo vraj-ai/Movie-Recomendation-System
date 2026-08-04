@@ -1,4 +1,4 @@
-"""Regression tests for the effort-4 /part3 review fixes (E4-1..E4-6)."""
+"""Regression tests for the effort-4 /debugger review fixes (E4-1..E4-6)."""
 
 from __future__ import annotations
 

@@ -37,7 +37,7 @@ their comparison table renders read-only in the Benchmark tab.
 5. Profile JSON is human-readable and gitignored (WEB-SEC-3); corrupt files
    quarantine, never crash, never silently overwrite (WEB-FAIL-3).
 
-## Known hazards for /part2
+## Known hazards for /coder
 
 - `gh`/GitHub API was flaky during ticketing (dial timeouts). Use retry loops
   for issue/PR operations; verify with `gh issue list` before re-creating
@@ -49,7 +49,7 @@ their comparison table renders read-only in the Benchmark tab.
 - Tests import `recsys` via `tests/conftest.py` sys.path prepend (P3-1 fix);
   keep new tests compatible with the pinned gate `.venv/bin/pytest -q`.
 
-## First moves for /part2
+## First moves for /coder
 
 Start with the frontier in any order (W1 engine is the highest-leverage);
 each ticket carries its own `Verification-command`. Work test-first; new deps

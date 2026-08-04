@@ -31,9 +31,9 @@ Frontier after #7 lands: **#2, #4, #6 can be worked in parallel**; then #3 (afte
 > GitHub's native issue-dependency links can be added in the UI if desired; the
 > text edges above are the authoritative dependency order.
 
-## Red-team follow-up tickets (part3)
+## Red-team follow-up tickets (debugger)
 
-Filed by the part3 maker pass. `gh` is flaky on this project; if a ticket below
+Filed by the debugger maker pass. `gh` is flaky on this project; if a ticket below
 has no linked GitHub issue it still needs creating with label `ready-for-agent`.
 Each ticket names the violated invariant and a runnable Verification-command that
 exits 0 exactly when fixed.
@@ -65,7 +65,7 @@ absent from all log records.
 - Verification: `.venv/bin/pytest tests/test_tmdb_client.py -q` exits 0.
 
 ### P3-3 — splitter crashes on all-singleton-user datasets
-`holdout_split` guards the fully-empty DataFrame (part2) but not the case where
+`holdout_split` guards the fully-empty DataFrame (coder) but not the case where
 the df is non-empty yet every user has <2 ratings: all groups go to `train_parts`
 and `test_parts` stays empty, so `pd.concat(test_parts)` raises the cryptic
 `ValueError: No objects to concatenate`. Per the docstring contract these users
@@ -77,15 +77,15 @@ return an empty test DataFrame (same columns/dtypes) when `test_parts` is empty.
 
 - **FAIL-3 unbounded `Retry-After`**: a hostile/broken server can return a huge
   `Retry-After` and the client will `time.sleep` for it. Cap to a sane maximum.
-  (Known part2 open edge case.)
+  (Known coder open edge case.)
 - **FAIL-7 cache value-type validation**: `_load_cache` checks keys exist but not
   that values have the right types (e.g. `genres` as a string). Wrong-typed but
-  structurally-present entries are served silently. (Known part2 open edge case.)
+  structurally-present entries are served silently. (Known coder open edge case.)
 - **Zero-relevant-item users in metric averages**: `evaluate_recommender` averages
   Precision/Recall/NDCG over *all* test users, including users with no held-out
   relevant items. This uniformly deflates every model, so the relative ranking
-  (the deliverable) is not distorted; low value. (Known part2 open edge case.)
-- **Duplicate `(userId, movieId)` rows summed in CSR** on load. (Known part2 edge.)
+  (the deliverable) is not distorted; low value. (Known coder open edge case.)
+- **Duplicate `(userId, movieId)` rows summed in CSR** on load. (Known coder edge.)
 - **No linter configured**: consider adding `ruff`/`flake8` in CI. (Known gap.)
 
 ---
@@ -128,9 +128,9 @@ WEB-FAIL-1..6, WEB-SEC-1..3). "Blocked by" tracks GitHub issue numbers.
       · blocked by #17, #18, #19 · WEB-FAIL-6, MATH-3, WEB-PERF-1
       · Verify: `.venv/bin/pytest -q && .venv/bin/ruff check .`
 
-## Red-team follow-up tickets (part3 — effort-2 web UI pass)
+## Red-team follow-up tickets (debugger — effort-2 web UI pass)
 
-Filed by the part3 maker pass over W1–W7. `gh` remains flaky on this project; if
+Filed by the debugger maker pass over W1–W7. `gh` remains flaky on this project; if
 a ticket below has no linked GitHub issue it still needs creating with label
 `ready-for-agent`. Each ticket names the violated invariant and a runnable
 Verification-command that exits 0 exactly when fixed.

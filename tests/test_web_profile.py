@@ -214,7 +214,7 @@ def test_ui_wires_quarantine_warning(client):
     assert "quarantined" in html  # loadStatus() consumes profile.quarantined
 
 
-# ---- /part3 review (W11), finding E3-1 -----------------------------------
+# ---- /debugger review (W11), finding E3-1 -----------------------------------
 
 
 def test_legacy_mutations_preserve_full_mode_watch_log(client, profile_path):

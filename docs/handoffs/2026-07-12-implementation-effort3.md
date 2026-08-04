@@ -43,7 +43,7 @@ reason threshold (`era > 0.6`) semantics preserved (≈1.0·tol vs 0.8·tol).
 - `era=0` → Saturday Night Fever 1977 (era .893), Moll Flanders 1996 (.713);
   `era=100` → Aadyaa 2020 (.893). Gradient works end-to-end.
 
-## Notes for the /part3 reviewer
+## Notes for the /debugger auditor
 
 - `data/catalog.sqlite` (12 MB) is intentionally untracked; rebuild via
   `scripts/build_catalog.py` (downloads are cached).

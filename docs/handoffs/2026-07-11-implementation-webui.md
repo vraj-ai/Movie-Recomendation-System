@@ -34,7 +34,7 @@ commit references. Branch is pushed.
   through a `textContent`-only `el()` helper, so CSV/TMDB/user strings
   cannot inject HTML.
 
-## Gotchas for the reviewer (/part3)
+## Gotchas for the auditor (/debugger)
 
 1. `create_app(...)` takes `pathlib.Path` for `profile_path` /
    `results_dir` — passing `str` raises `TypeError` at
@@ -47,5 +47,5 @@ commit references. Branch is pushed.
 
 ## Next
 
-`/part3` — maker audit → fresh-eyes grade → handoff → PR
+`/debugger` — maker audit → fresh-eyes review → handoff → PR
 (task #13, pending).
