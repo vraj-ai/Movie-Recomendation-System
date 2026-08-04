@@ -1,4 +1,4 @@
-# Effort 3 — /part3 Review: practical watch-log recommender (W8–W10)
+# Effort 3 — /debugger Review: practical watch-log recommender (W8–W10)
 
 Reviewer pass on branch `plan/taste-engine-webui`, mirroring the effort-2
 review that produced `ae4ca2f`. Baseline at review start: 349 passed.
@@ -38,7 +38,7 @@ wall-clock dependence.
 - **Min-3-log gate** — `{"detail":"log_more","needed":N}` is intended
   behavior per the plan; not flagged.
 
-## Grade: **B**
+## Review: **B**
 
 - **Correctness: B+** — scorer math is clean and the in-effort era-falloff
   fix (hard clip → `exp` gradient) was the right call, but two HIGH

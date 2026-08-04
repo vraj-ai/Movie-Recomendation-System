@@ -1,6 +1,6 @@
 # Effort 3 — Practical Watch Log (India-scale catalog + polished UI)
 
-Date: 2026-07-12 · Chain: /part1 → /part2 (3 subagents) → /part3 (review agent)
+Date: 2026-07-12 · Chain: /planner → /coder (3 subagents) → /debugger (review agent)
 
 ## User requirements (verbatim intent)
 1. UI must look really good and polished; currently "there is no art" → real poster art.
@@ -100,7 +100,7 @@ in the default UI (PRAC-3).
   (dark cinematic, poster-forward, onboarding search→star→log flow, hero next watch +
   next-10 grid, human sliders w/ helpers, per-card "Why this?" + "Show the math" button,
   Advanced link to legacy tabs), update UI-coupled tests.
-- **W11 (Agent D — /part3)**: fresh-eyes review of W8–W10, fix findings, full suite green,
+- **W11 (Agent D — /debugger)**: fresh-eyes review of W8–W10, fix findings, full suite green,
   review handoff `docs/handoffs/2026-07-12-effort3-review.md`.
 
 ## Sequencing & ownership (no file overlaps)

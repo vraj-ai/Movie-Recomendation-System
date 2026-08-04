@@ -6,4 +6,4 @@
 - match10 = round(clamp(score,0,1)*10,1) — monotone display metadata (RAT-2).
 - `reasons` list → single deterministic `explanation` sentence, variant pools keyed by movie id (RAT-3).
 - Frozen 5-component contract untouched; byte-reproducibility (E3-6) preserved via cache-only `--offline` enrichment.
-- Next: /part2 implements W12→W14 test-first on `plan/taste-engine-webui`.
+- Next: /coder implements W12→W14 test-first on `plan/taste-engine-webui`.

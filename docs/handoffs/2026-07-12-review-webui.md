@@ -1,11 +1,11 @@
-# Handoff — /part3 review of the effort-2 web UI (2026-07-12)
+# Handoff — /debugger review of the effort-2 web UI (2026-07-12)
 
 **Scope:** the just-shipped taste engine + web UI (W1–W7): `recsys/taste.py`,
 `recsys/profile_store.py`, `recsys/web/app.py`, `recsys/web/__main__.py`,
 `recsys/web/static/index.html`, and their tests. Core recsys code was reviewed in the
-previous /part3 run; its fixes (P3-1..3) were re-verified via the full suite.
+previous /debugger run; its fixes (P3-1..3) were re-verified via the full suite.
 
-**Agent:** `.claude/agents/part3-movie-recsys.md` — **reused** (not regenerated).
+**Agent:** `.claude/agents/debugger-movie-recsys.md` — **reused** (not regenerated).
 Minimal pin edit only: added the web UI files to the review scope and
 `docs/SPEC-TASTE-WEBUI.md` + WEB-FAIL/WEB-SEC/WEB-PERF invariants to the doc list.
 
@@ -38,7 +38,7 @@ GitHub issues for P3-4..6 are **pending** — `gh auth status` timed out against
 keyring, so `tickets.md` is the audit trail; the three issues still need creating
 with label `ready-for-agent`.
 
-## Checker's grade (fresh-eyes, separate context): **CLEAN**
+## Checker's review (fresh-eyes, separate context): **CLEAN**
 
 All three fixes verified real by reading the code and adversarial probing (fuzzed the
 benchmark endpoint with missing/empty/UTF-16/quote-bomb/ragged/unreadable CSVs; checked
@@ -79,4 +79,4 @@ No BLOCKING findings. Six advisories:
 
 The follow-up cluster above — especially strengthening the quarantine UI test
 (advisory 1) and the WEB-PERF-2 real-data profile — or, if effort-3 starts, run
-/part3 over whatever `/part2` ships next.
+/debugger over whatever `/coder` ships next.

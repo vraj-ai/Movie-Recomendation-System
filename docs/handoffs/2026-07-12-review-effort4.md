@@ -1,4 +1,4 @@
-# Handoff — /part3 review of effort-4 ratings + unique explanations (W12–W14)
+# Handoff — /debugger review of effort-4 ratings + unique explanations (W12–W14)
 
 ## Scope reviewed
 - W12 (e88968d): external ratings — catalog schema (imdb_rating, rt_rating, age_rating), OMDb enrichment, pinned fixture ratings.
@@ -27,7 +27,7 @@
 - New regression file `tests/test_e4_review_fixes.py` (5 tests) covers E4-1/2/3/5/6.
 - Full suite after fixes: 393 passed, 1 warning (StarletteDeprecationWarning).
 
-## Grade
+## Review
 B+ — implementation was solid and invariant-driven; findings were edge-case robustness (rounding, corrupt cache, template collision) rather than design flaws. No security issues beyond the http→https hardening.
 
 ## Next steps

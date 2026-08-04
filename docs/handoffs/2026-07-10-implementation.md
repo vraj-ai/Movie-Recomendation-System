@@ -1,7 +1,7 @@
 # Handoff — Movie Recommendation System (all 6 tickets implemented)
 
 **Date:** 2026-07-10
-**Session:** `/part2` implementation chain — all tickets (#7 → #2 → #4 → #6 → #3 → #5)
+**Session:** `/coder` implementation chain — all tickets (#7 → #2 → #4 → #6 → #3 → #5)
 **Status:** All 6 implementation tickets complete. 145 tests passing. Red-team pass done.
 **Previous handoff:** [`2026-07-10-planning.md`](2026-07-10-planning.md)
 
@@ -137,7 +137,7 @@ found and fixed **4 real bugs** test-first (red → green):
 
 - **Duplicate `(userId, movieId)` rows** are summed in the sparse matrix
   (CSR semantics). MovieLens `ml-latest-small` has no duplicates; dedup policy
-  is a spec decision. Flag for `/part1`.
+  is a spec decision. Flag for `/planner`.
 - **Cache value-type validation** — FAIL-7 checks keys exist but not that
   values are the right type. Downstream coercion prevents crashes/wrong data;
   strengthening is defense-in-depth.
@@ -163,6 +163,6 @@ found and fixed **4 real bugs** test-first (red → green):
 - **Real-data run** — download MovieLens + set TMDB key, then
   `python -m recsys.cli run` to produce the real comparison table.
 - **Refactor pass** — address the 7 flagged smells (especially #1 factory and
-  #2 accessors) via `/part1` → `/part2` or a dedicated refactor ticket.
+  #2 accessors) via `/planner` → `/coder` or a dedicated refactor ticket.
 - **Performance verification** — the perf invariants (PERF-1..6) are structural
   but not unit-tested; run on real data to confirm budgets hold.
