@@ -1,54 +1,60 @@
 # Movie Recommendation System
 
-An **algorithm experiment**: implement four movie-recommendation approaches and
-compare them head-to-head on one dataset with one set of metrics. Not a production
-service — the deliverable is a reproducible benchmark.
+**Which recommendation algorithm actually wins, and by how much?**
 
-## Approaches compared
+This is an experiment, not a product. It implements four classic
+movie-recommendation approaches, runs all four over the same dataset with the
+same train/test split, and prints one comparison table. The deliverable is a
+**reproducible benchmark** you can re-run in a single command.
 
-| Approach | Signal |
-|----------|--------|
-| Popularity baseline | Global (non-personalized) reference floor |
-| Content-based | TF-IDF + cosine over TMDB features (genres, keywords, cast, crew, overview) |
-| Matrix factorization (SVD) | Collaborative filtering on MovieLens ratings |
-| Hybrid | Weighted blend of content + CF |
+```bash
+python -m recsys.cli run --fixture --out results/   # seconds, no API key, no download
+```
+
+## The four approaches
+
+| Approach | What signal it uses | What it's good at |
+|----------|--------------------|-------------------|
+| **Popularity** | None — global top movies | The floor. Any personalized model must beat this to justify itself. |
+| **Content-based** | TF-IDF + cosine over TMDB genres, keywords, cast, crew, overview | New/obscure titles; works with zero ratings for a movie |
+| **Matrix factorization (SVD)** | Collaborative filtering on MovieLens ratings | Latent taste patterns across users |
+| **Hybrid** | Weighted blend of content + CF | Cold-start coverage plus CF accuracy |
+
+## How they're scored
+
+Ranking quality is the primary axis — **Precision@K, Recall@K, NDCG@K** on a
+per-user hold-out split, since what matters is the order of the top-N list.
+**RMSE / MAE** are reported additionally for the two approaches that predict a
+rating value (SVD, hybrid); popularity and content-based don't predict ratings,
+so those cells are blank by design.
 
 ## Data
 
-MovieLens `ml-latest-small` ratings joined to TMDB metadata via `links.csv`
-(`movieId → tmdbId`). TMDB metadata is fetched from the TMDB REST API and cached
-to disk.
-
-## Evaluation
-
-Top-N ranking metrics (Precision@K, Recall@K, NDCG@K) as the primary axis across
-all four approaches, plus RMSE/MAE for the rating-predicting models, on a per-user
-hold-out split.
-
-## Stack
-
-Python · scikit-learn · scipy · pandas · numpy. CLI: `run` (full pipeline →
-comparison table) and `recommend` (top-N for a user / similar-to-movie).
+MovieLens `ml-latest-small` ratings, joined to TMDB metadata through
+`links.csv` (`movieId → tmdbId`). TMDB metadata is pulled from the TMDB REST
+API once and cached to disk, so repeat runs are offline.
 
 ## Setup
 
-Requires Python 3.11–3.13 (a ready-to-use Python 3.13 virtualenv is checked in at
-`.venv/`). Either activate it, or call `.venv/bin/python` directly:
+Python 3.11–3.13. A ready-to-use 3.13 virtualenv is checked in at `.venv/`:
 
 ```bash
-source .venv/bin/activate            # or prefix commands with .venv/bin/
-pip install -r requirements.txt      # only if not using the bundled .venv
+source .venv/bin/activate         # or just prefix commands with .venv/bin/
+pip install -r requirements.txt   # only if you're not using the bundled .venv
 ```
 
-## Quickstart (offline — no API key or download needed)
+## Run it
 
-A small bundled fixture (10 movies, 10 users) runs the whole pipeline offline:
+### Offline (no API key, no download)
+
+A tiny bundled fixture — 10 movies, 10 users — exercises the whole pipeline:
 
 ```bash
 python -m recsys.cli run --fixture --out results/
 ```
 
-This trains all four approaches and writes `results/comparison.{md,csv}`, e.g.:
+It trains all four approaches and writes `results/comparison.md` and
+`results/comparison.csv`:
 
 | Approach | Precision@10 | Recall@10 | NDCG@10 | RMSE | MAE |
 |----------|-------------|----------|---------|------|-----|
@@ -57,37 +63,54 @@ This trains all four approaches and writes `results/comparison.{md,csv}`, e.g.:
 | svd | 0.0900 | 0.8000 | 0.5131 | 1.0957 | 0.8672 |
 | hybrid | 0.0900 | 0.8000 | 0.7262 | 1.0957 | 0.8672 |
 
-> Fixture numbers are illustrative (tiny dataset) — use the full dataset below for
-> the real benchmark.
+> These numbers are a smoke test, not a result — with 10 users every approach
+> retrieves nearly the same set, so only NDCG separates them. Use the full
+> dataset for a real comparison.
 
-## Real run (full dataset)
+### Full dataset
 
-1. Download `ml-latest-small` from <https://grouplens.org/datasets/movielens/> and
-   unzip to `data/ml-latest-small/`.
-2. Get a free TMDB API key: `cp .env.example .env`, then set `TMDB_API_KEY`.
-3. `python -m recsys.cli run --out results/`
+1. Download `ml-latest-small` from
+   <https://grouplens.org/datasets/movielens/> and unzip into
+   `data/ml-latest-small/`.
+2. Get a free TMDB API key, then `cp .env.example .env` and set `TMDB_API_KEY`.
+3. Run it:
 
-## Recommend / find similar
+   ```bash
+   python -m recsys.cli run --out results/
+   ```
+
+### Get actual recommendations
 
 ```bash
-python -m recsys.cli recommend --user 1 -n 10     # top-10 for a user
+python -m recsys.cli recommend --user 1 -n 10     # top 10 for a user
 python -m recsys.cli recommend --movie 1 -n 10    # movies similar to a movie
 ```
+
+## Stack
+
+Python · scikit-learn · scipy · pandas · numpy. No service, no database — the
+CLI is the whole interface.
 
 ## Tests
 
 ```bash
-pytest -q      # 147 passing (offline, fixture-based)
+pytest -q     # 393 tests, offline, fixture-based (~3 min)
 ```
 
-## Docs
+> One known failure: `test_deterministic_rebuild_matches_committed_fixture` —
+> the committed catalog fixture has drifted from a fresh deterministic rebuild.
+> The other 392 pass.
 
-- **Glossary:** [`CONTEXT.md`](CONTEXT.md)
-- **Spec:** [`docs/SPEC.md`](docs/SPEC.md) ([issue #1](https://github.com/VrajGupta/Movie-Recomendation-System/issues/1))
-- **Invariants:** [`docs/INVARIANTS.md`](docs/INVARIANTS.md)
-- **Tickets:** [`tickets.md`](tickets.md) (GitHub issues #2–#7)
-- **Handoffs:** [planning](docs/handoffs/2026-07-10-planning.md) · [implementation](docs/handoffs/2026-07-10-implementation.md) · [review](docs/handoffs/2026-07-10-review.md)
+## Project docs
 
-> Status: **implementation + code review complete** — all four approaches built,
-> **147 tests passing**, reviewed via `/debugger` (SEC-1 key-leak, test-gate, and
-> empty-split bugs fixed). Ready for a real-data run.
+| Doc | What's in it |
+|-----|--------------|
+| [`CONTEXT.md`](CONTEXT.md) | Glossary — the vocabulary used across the code |
+| [`docs/SPEC.md`](docs/SPEC.md) | What was being built and why ([issue #1](https://github.com/VrajGupta/Movie-Recomendation-System/issues/1)) |
+| [`docs/INVARIANTS.md`](docs/INVARIANTS.md) | Properties the benchmark must never violate |
+| [`tickets.md`](tickets.md) | Work breakdown (GitHub issues #2–#7) |
+| Handoffs | [planning](docs/handoffs/2026-07-10-planning.md) · [implementation](docs/handoffs/2026-07-10-implementation.md) · [review](docs/handoffs/2026-07-10-review.md) |
+
+**Status:** all four approaches implemented and code-reviewed (a key-leak bug, a
+test-gate bug, and an empty-split bug were found and fixed). Ready for a
+full-dataset run.
